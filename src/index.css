@@ -1,0 +1,317 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import 'tailwindcss';
+
+@theme inline {
+  --color-background: var(--bg-primary);
+  --color-foreground: var(--text-primary);
+  --color-card: var(--surface);
+  --color-card-foreground: var(--text-primary);
+  --color-primary: var(--primary);
+  --color-primary-foreground: #FFFFFF;
+  --color-secondary: var(--secondary);
+  --color-muted: var(--text-muted);
+  --color-border: var(--border);
+  --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+/* ==========================================================================
+   DESIGN TOKENS — PREMIUM COLORFUL ACADEMIC WORKSPACE (LIGHT THEME ONLY)
+   ========================================================================== */
+:root {
+  /* Surfaces & Canvas Backgrounds */
+  --bg-primary: #F3F5FF;          /* Soft lavender-blue canvas */
+  --bg-secondary: #EEF2FF;        /* Secondary tinted surface */
+  --surface: #FFFFFF;             /* Pure white crisp card */
+  --surface-hover: #F8FAFC;       /* Subtle card hover state */
+  --surface-soft: #F8F9FF;        /* Soft inset background */
+  --surface-muted: #F1F3FE;       /* Muted pill / selector background */
+  --surface-inset: #EEF2FF;
+
+  /* Text Hierarchy (Deep Navy & Slate Blue) */
+  --text-primary: #172554;        /* Deep navy text */
+  --text-secondary: #64748B;      /* Slate blue secondary text */
+  --text-muted: #94A3B8;          /* Refined caption text */
+
+  /* Borders & Dividers */
+  --border: #E2E8F0;              /* Thin neutral border */
+  --border-strong: #CBD5E1;        /* Active / hover border */
+  --border-soft: #EEF2F6;
+
+  /* Navigation Specific */
+  --sidebar-bg: #F8F7FF;          /* Very pale lavender sidebar */
+  --sidebar-border: #E6E9F8;
+  --topbar-bg: #FFFFFF;           /* Pure white topbar */
+  --topbar-border: #E2E8F0;
+
+  /* Form Controls */
+  --input-bg: #FFFFFF;
+  --input-border: #E2E8F0;
+  --input-text: #172554;
+  --input-placeholder: #94A3B8;
+
+  /* Primary Accent (Vivid Indigo-Purple) */
+  --primary: #5B4BDB;
+  --primary-hover: #4938C5;
+  --primary-soft: #EEF0FF;
+  --primary-soft-text: #5B4BDB;
+  --primary-soft-border: #DDD8FE;
+
+  /* Supporting Accents */
+  --secondary: #3B82F6;          /* Bright Blue */
+  --accent: #0EA5E9;             /* Turquoise / Cyan */
+  --violet: #8B5CF6;             /* Violet */
+  --amber: #F59E0B;              /* Warm Amber */
+
+  /* Workspace Hero Header */
+  --hero-bg: linear-gradient(135deg, #EEF2FF 0%, #F5F3FF 50%, #EFF6FF 100%);
+  --hero-border: #DDD8FE;
+
+  /* Status Colors */
+  --success: #10B981;
+  --success-soft: #ECFDF5;
+  --success-border: #A7F3D0;
+  --success-text: #047857;
+
+  --warning: #F59E0B;
+  --warning-soft: #FFFBEB;
+  --warning-border: #FDE68A;
+  --warning-text: #B45309;
+
+  --danger: #EF4444;
+  --danger-soft: #FEF2F2;
+  --danger-border: #FECACA;
+  --danger-text: #B91C1C;
+
+  /* Badge Tokens */
+  --badge-indigo-bg: #EEF0FF;
+  --badge-indigo-text: #5B4BDB;
+  --badge-indigo-border: #DDD8FE;
+
+  --badge-purple-bg: #F5F3FF;
+  --badge-purple-text: #7C3AED;
+  --badge-purple-border: #E9D5FF;
+
+  --badge-sky-bg: #EFF6FF;
+  --badge-sky-text: #2563EB;
+  --badge-sky-border: #BFDBFE;
+
+  --badge-amber-bg: #FFFBEB;
+  --badge-amber-text: #D97706;
+  --badge-amber-border: #FDE68A;
+
+  --badge-emerald-bg: #ECFDF5;
+  --badge-emerald-text: #059669;
+  --badge-emerald-border: #A7F3D0;
+
+  --badge-rose-bg: #FEF2F2;
+  --badge-rose-text: #DC2626;
+  --badge-rose-border: #FECACA;
+
+  /* Tooltip & Popovers */
+  --tooltip-bg: #172554;
+  --tooltip-text: #FFFFFF;
+  --tooltip-border: #334155;
+
+  /* Scrollbars */
+  --scrollbar-thumb: #CBD5E1;
+  --scrollbar-hover: #94A3B8;
+}
+
+/* ==========================================================================
+   BASE & TYPOGRAPHY STYLES (MOBILE-FIRST & SAFE AREA AWARE)
+   ========================================================================== */
+html {
+  overflow-x: hidden;
+  max-width: 100vw;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 14.5px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+  max-width: 100vw;
+  touch-action: manipulation;
+}
+
+/* Safe-area utility classes for mobile notches and gesture bars */
+.safe-top {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.safe-left {
+  padding-left: env(safe-area-inset-left, 0px);
+}
+.safe-right {
+  padding-right: env(safe-area-inset-right, 0px);
+}
+
+/* Typography Hierarchy */
+h1 {
+  font-size: 1.875rem; /* 30px */
+  line-height: 1.25;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  color: var(--text-primary);
+}
+
+@media (min-width: 640px) {
+  h1 {
+    font-size: 2.125rem; /* 34px */
+  }
+}
+
+h2 {
+  font-size: 1.35rem; /* 21.5px */
+  line-height: 1.3;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+
+@media (min-width: 640px) {
+  h2 {
+    font-size: 1.5rem; /* 24px */
+  }
+}
+
+h3 {
+  font-size: 1.05rem; /* 16.8px */
+  line-height: 1.35;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+p, span, li, dt, dd {
+  font-size: 0.925rem; /* 14.8px */
+}
+
+/* Refined custom scrollbar */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 9999px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-hover);
+}
+
+/* Barcode Scanner Frame Animations */
+@keyframes scanline {
+  0% { transform: translateY(0); opacity: 0.8; }
+  50% { transform: translateY(180px); opacity: 1; }
+  100% { transform: translateY(0); opacity: 0.8; }
+}
+
+@keyframes pulseGlow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(91, 75, 219, 0.4); }
+  50% { box-shadow: 0 0 0 12px rgba(91, 75, 219, 0); }
+}
+
+.scan-line {
+  animation: scanline 2.2s ease-in-out infinite;
+}
+
+.scan-pulse {
+  animation: pulseGlow 2s infinite;
+}
+
+/* Utility Animations */
+.animate-in {
+  animation-duration: 200ms;
+  animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  animation-fill-mode: both;
+}
+
+/* ==========================================================================
+   PRINT STYLES — STRICT A4 CITATION PAPER ISOLATION
+   Ensures ONLY the A4 document sheet is printed, hiding all application chrome.
+   ========================================================================== */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 12mm 15mm;
+  }
+
+  /* Completely suppress all workspace navigation, sidebars, buttons, toolbars */
+  header,
+  aside,
+  nav,
+  footer,
+  .no-print,
+  #refscan-chatbot,
+  .mobile-bottom-nav,
+  button,
+  input,
+  select,
+  [role="dialog"] > div:first-child {
+    display: none !important;
+  }
+
+  /* Reset outer viewport containers to avoid scroll clipping */
+  html,
+  body {
+    background: #ffffff !important;
+    color: #172554 !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  #root,
+  .flex.h-screen,
+  main,
+  .max-w-7xl {
+    display: block !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: auto !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: #ffffff !important;
+    border: none !important;
+  }
+
+  /* Format the A4 Citation Sheet cleanly for physical printing */
+  #citation-a4-sheet {
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-height: 265mm !important;
+    margin: 0 auto !important;
+    padding: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    background: #ffffff !important;
+    transform: none !important;
+  }
+
+  /* Avoid splitting reference citation lines mid-sentence across page breaks */
+  #citation-a4-sheet .space-y-4 > div {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+}

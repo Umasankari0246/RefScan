@@ -1,0 +1,11 @@
+{
+  "title": "RefScan",
+  "description": "RefScan streamlines academic research: scan book barcodes, manage reference collections, generate citations, and analyze research papers.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
