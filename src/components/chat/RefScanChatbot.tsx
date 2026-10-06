@@ -19,13 +19,13 @@ export function RefScanChatbot() {
     {
       id: "welcome_1",
       sender: "assistant",
-      text: "Hello! I'm **RefScan AI**, your academic research and citation assistant. Ask me about your scanned books, IEEE/APA formats, or saved references!",
+      text: "Hello! I'm **RefScan AI**, your academic research and knowledge co-pilot. Ask me anything about **this project (RefScan)**, your uploaded papers, or any **computer science and AI topics like Google**!",
       timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
       suggestions: [
-        "What is this book about?",
-        "Give me the IEEE citation",
-        "What is the difference between APA and IEEE?",
-        "Show me the books I saved"
+        "What is RefScan and how does it work?",
+        "What is a transformer model in deep learning?",
+        "How do I scan a book barcode?",
+        "What is the difference between APA and IEEE?"
       ]
     }
   ]);
@@ -115,12 +115,13 @@ export function RefScanChatbot() {
       {
         id: "welcome_reset",
         sender: "assistant",
-        text: "Chat cleared! How can I help with your academic references today?",
+        text: "Chat cleared! Ask me anything about RefScan features, your uploaded documents, or general AI and computer science questions!",
         timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
         suggestions: [
-          "What is this book about?",
-          "Give me the APA citation",
-          "Show me the books I saved"
+          "What is RefScan?",
+          "What is deep learning?",
+          "How does research paper extraction work?",
+          "What is a transformer model?"
         ]
       }
     ]);

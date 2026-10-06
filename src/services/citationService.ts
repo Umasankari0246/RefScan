@@ -4,7 +4,7 @@
  * using verified metadata from Books, Research Papers, and Websites.
  */
 
-import { Reference, BookReference, PaperReference, WebsiteReference, CitationStyle } from "../types/index.ts";
+import type { Reference, BookReference, PaperReference, WebsiteReference, CitationStyle } from "../types/index.ts";
 
 export function formatAuthorsIEEE(authors: string[]): string {
   if (!authors || authors.length === 0) return "Anon.";
