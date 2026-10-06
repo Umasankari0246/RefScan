@@ -2,21 +2,12 @@
  * RefScan - Authentication & User Profile Service Layer
  * Connects frontend components to the live MongoDB authentication endpoints (/api/auth/*).
  * Token-based session authentication with Bearer JWT tokens.
+ * Environment-aware API URL resolution and safe response parsing.
  */
 
 import { SafeUser, AuthResponse } from "../types";
 import { StorageService, STORAGE_KEYS } from "./storageService";
-
-/**
- * Normalizes API endpoint URL so duplicate `/api` prefix is never produced,
- * regardless of whether VITE_API_BASE_URL is '', '/api', or 'https://domain.com/api'.
- */
-function getApiUrl(path: string): string {
-  const rawBase = (import.meta.env.VITE_API_BASE_URL as string) || "";
-  const cleanBase = rawBase.replace(/\/+$/, "").replace(/\/api$/, "");
-  const cleanPath = path.startsWith("/") ? path : `/${path}`;
-  return `${cleanBase}${cleanPath}`;
-}
+import { getApiUrl, safeParseJsonResponse } from "./apiConfig";
 
 export class AuthService {
   /**
@@ -66,7 +57,7 @@ export class AuthService {
       });
 
       if (res.ok) {
-        const json = await res.json();
+        const json = await safeParseJsonResponse(res, "verifySession (/api/auth/me)");
         if (json.success && json.user) {
           StorageService.safeSet("refscan_user_session", json.user);
           return json.user as SafeUser;
@@ -101,7 +92,7 @@ export class AuthService {
       body: JSON.stringify({ email: email.trim(), password }),
     });
 
-    const data = await res.json();
+    const data = await safeParseJsonResponse(res, "login (/api/auth/login)");
     if (!res.ok || !data.success) {
       throw new Error(data.message || data.error || "Authentication failed.");
     }
@@ -139,7 +130,7 @@ export class AuthService {
       }),
     });
 
-    const resData = await res.json();
+    const resData = await safeParseJsonResponse(res, "register (/api/auth/register)");
     if (!res.ok || !resData.success) {
       throw new Error(resData.message || resData.error || "Registration failed.");
     }

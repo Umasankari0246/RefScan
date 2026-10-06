@@ -2,12 +2,14 @@
  * RefScan - Backend API Client
  * Connects frontend components to the live RefScan backend endpoints with JWT Bearer authentication.
  * Strictly scopes data access to the authenticated user.
+ * Environment-aware endpoint resolution and safe response parsing.
  */
 
-import { Reference, BookReference, PaperReference, CitationStyle, ResearchGap, CitationPaper, SafeUser, UserDocument } from "../types";
-import { generateCitationPlainText } from "./citationService";
-import { sendChatMessage } from "./chatbotService";
-import { AuthService } from "./authService";
+import { Reference, BookReference, PaperReference, CitationStyle, ResearchGap, CitationPaper, SafeUser, UserDocument } from "../types/index.ts";
+import { generateCitationPlainText } from "./citationService.ts";
+import { sendChatMessage } from "./chatbotService.ts";
+import { AuthService } from "./authService.ts";
+import { getApiUrl, safeParseJsonResponse } from "./apiConfig.ts";
 
 export interface BackendHealthStatus {
   status: "online" | "offline" | "degraded";
@@ -31,17 +33,6 @@ export interface BackendHealthStatus {
   };
 }
 
-/**
- * Normalizes API endpoint URL so duplicate `/api` prefix is never produced,
- * regardless of whether VITE_API_BASE_URL is '', '/api', or 'https://domain.com/api'.
- */
-function getApiUrl(path: string): string {
-  const rawBase = (import.meta.env.VITE_API_BASE_URL as string) || "";
-  const cleanBase = rawBase.replace(/\/+$/, "").replace(/\/api$/, "");
-  const cleanPath = path.startsWith("/") ? path : `/${path}`;
-  return `${cleanBase}${cleanPath}`;
-}
-
 class ApiClient {
   private isOnline: boolean = true;
 
@@ -60,12 +51,12 @@ class ApiClient {
     try {
       const res = await fetch(getApiUrl("/api/health"));
       if (res.ok) {
-        const data = await res.json();
+        const data = await safeParseJsonResponse<BackendHealthStatus>(res, "checkHealth (/api/health)");
         this.isOnline = true;
         return data;
       }
       throw new Error(`Health check failed with HTTP ${res.status}`);
-    } catch (err) {
+    } catch (err: any) {
       this.isOnline = false;
       return {
         status: "offline",
@@ -76,7 +67,7 @@ class ApiClient {
           mode: "mongodb",
           status: "disconnected",
           uriConfigured: false,
-          error: "Backend is currently unreachable.",
+          error: err?.message || "Backend is currently unreachable.",
         },
       };
     }
@@ -89,7 +80,7 @@ class ApiClient {
     const clean = isbn.replace(/[^0-9X]/gi, "");
     try {
       const res = await fetch(getApiUrl(`/api/books/lookup?isbn=${encodeURIComponent(clean)}`));
-      const data = await res.json();
+      const data = await safeParseJsonResponse(res, "lookupIsbn (/api/books/lookup)");
       if (res.ok && data.success && data.book) {
         return data.book;
       }
@@ -115,7 +106,7 @@ class ApiClient {
       });
 
       if (res.ok) {
-        const json = await res.json();
+        const json = await safeParseJsonResponse(res, "getReferences (/api/references)");
         return json.data || [];
       } else if (res.status === 401) {
         console.warn("[ApiClient] Unauthorized: session token expired or missing.");
@@ -141,7 +132,7 @@ class ApiClient {
       });
 
       if (res.ok) {
-        const json = await res.json();
+        const json = await safeParseJsonResponse(res, "saveReference (/api/references)");
         return json.reference || ref;
       } else if (res.status === 503) {
         throw new Error("MongoDB database is currently offline. Reference cannot be saved.");
@@ -168,7 +159,7 @@ class ApiClient {
       });
 
       if (res.ok) {
-        const json = await res.json();
+        const json = await safeParseJsonResponse(res, `updateReference (/api/references/${ref.id})`);
         return json.reference || ref;
       }
     } catch (err) {
@@ -213,7 +204,7 @@ class ApiClient {
       });
 
       if (res.ok) {
-        const json = await res.json();
+        const json = await safeParseJsonResponse(res, "uploadPaper (/api/papers/upload)");
         return json.paper || body;
       }
     } catch (err) {
@@ -255,7 +246,7 @@ class ApiClient {
         body: JSON.stringify({ reference, style }),
       });
       if (res.ok) {
-        const json = await res.json();
+        const json = await safeParseJsonResponse(res, "generateCitation (/api/citations/generate)");
         return json.plainText || generateCitationPlainText(reference, style);
       }
     } catch (err) {
@@ -282,7 +273,7 @@ class ApiClient {
       });
 
       if (res.ok) {
-        const json = await res.json();
+        const json = await safeParseJsonResponse(res, "sendChatMessage (/api/chat)");
         return json.reply;
       }
     } catch (err) {
@@ -310,7 +301,7 @@ class ApiClient {
       });
 
       if (res.ok) {
-        const json = await res.json();
+        const json = await safeParseJsonResponse(res, "getResearchGaps (/api/gaps)");
         return json.data || [];
       }
     } catch (err) {
@@ -331,7 +322,7 @@ class ApiClient {
       });
 
       if (res.ok) {
-        const json = await res.json();
+        const json = await safeParseJsonResponse(res, "getCitationPapers (/api/citation-papers)");
         return json.data || [];
       }
     } catch (err) {
@@ -355,7 +346,7 @@ class ApiClient {
       });
 
       if (res.ok) {
-        const json = await res.json();
+        const json = await safeParseJsonResponse(res, "saveCitationPaper (/api/citation-papers)");
         return json.citationPaper || paper;
       }
     } catch (err) {
@@ -393,7 +384,7 @@ class ApiClient {
         },
       });
       if (res.ok) {
-        const json = await res.json();
+        const json = await safeParseJsonResponse(res, "getNotifications (/api/notifications)");
         return json.data || [];
       }
     } catch {
@@ -436,7 +427,7 @@ class ApiClient {
       },
     });
 
-    const data = await res.json();
+    const data = await safeParseJsonResponse(res, "getUsers (/api/users)");
     if (!res.ok) {
       throw new Error(data.message || data.error || `Failed to fetch users (HTTP ${res.status})`);
     }
@@ -458,7 +449,7 @@ class ApiClient {
       },
     });
 
-    const data = await res.json();
+    const data = await safeParseJsonResponse(res, `getUserById (/api/users/${id})`);
     if (!res.ok) {
       throw new Error(data.message || data.error || "Failed to fetch user.");
     }
@@ -478,7 +469,7 @@ class ApiClient {
       body: JSON.stringify(updateData),
     });
 
-    const data = await res.json();
+    const data = await safeParseJsonResponse(res, `updateUser (/api/users/${id})`);
     if (!res.ok) {
       throw new Error(data.message || data.error || "Failed to update user.");
     }
@@ -496,7 +487,7 @@ class ApiClient {
       },
     });
 
-    const data = await res.json();
+    const data = await safeParseJsonResponse(res, `deleteUser (/api/users/${id})`);
     if (!res.ok) {
       throw new Error(data.message || data.error || "Failed to delete user.");
     }
