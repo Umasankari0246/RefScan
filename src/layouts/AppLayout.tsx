@@ -3,6 +3,8 @@ import { Outlet, useLocation, useNavigate } from "react-router";
 import { Menu, Microscope, Search, ScanLine, Plus } from "lucide-react";
 import Sidebar from "./Sidebar";
 import { MobileBottomNav } from "../components/common/MobileBottomNav";
+import { RefScanLogo } from "../components/common/RefScanLogo";
+import { AndroidBackHandler } from "../components/common/AndroidBackHandler";
 import { RefScanChatbot } from "../components/chat/RefScanChatbot";
 import { useRefScan } from "../context/RefScanContext";
 
@@ -48,6 +50,15 @@ export default function AppLayout() {
     setMobileOpen(false);
   }, [location.pathname]);
 
+  // Intercept back button if mobile navigation drawer is open
+  const handleInterceptBack = useCallback(() => {
+    if (mobileOpen) {
+      setMobileOpen(false);
+      return true;
+    }
+    return false;
+  }, [mobileOpen]);
+
   // Dynamic mobile header title
   const pageTitle = useMemo(() => {
     const path = location.pathname;
@@ -86,6 +97,9 @@ export default function AppLayout() {
 
   return (
     <div className="flex h-screen bg-[var(--bg-primary)] text-[var(--text-primary)] overflow-hidden transition-colors selection:bg-indigo-500 selection:text-white">
+      {/* Native Android Hardware Back Button Controller */}
+      <AndroidBackHandler onInterceptBack={handleInterceptBack} />
+
       {/* Mobile overlay backdrop */}
       {mobileOpen && (
         <div 
@@ -112,52 +126,43 @@ export default function AppLayout() {
       {/* Main Content Viewport */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-[var(--bg-primary)]">
         {/* Mobile Header with Safe Area support (Hidden on Desktop) */}
-        <header className="md:hidden flex items-center justify-between px-3 pt-[env(safe-area-inset-top,0px)] h-[calc(3.5rem+env(safe-area-inset-top,0px))] bg-white/95 backdrop-blur-md border-b border-[#E2E8F0] flex-shrink-0 z-20 no-print">
-          <div className="flex items-center gap-2 min-w-0 flex-1">
+        <header className="md:hidden flex items-center justify-between px-2.5 sm:px-4 pt-[env(safe-area-inset-top,0px)] h-[calc(3.5rem+env(safe-area-inset-top,0px))] bg-white/95 backdrop-blur-md border-b border-[#E2E8F0] flex-shrink-0 z-20 no-print select-none">
+          {/* Left Structure: [Menu] [RefScan logo icon] RefScan / Current Page */}
+          <div className="flex items-center gap-2 min-w-0 flex-1 mr-2">
             <button
               onClick={() => setMobileOpen(true)}
-              className="w-11 h-11 rounded-xl text-[#64748B] hover:text-[#172554] hover:bg-[#F3F5FF] active:scale-95 transition-all flex items-center justify-center cursor-pointer flex-shrink-0"
+              className="w-10 h-10 rounded-xl text-[#64748B] hover:text-[#172554] hover:bg-[#F3F5FF] active:scale-95 transition-all flex items-center justify-center cursor-pointer flex-shrink-0"
               aria-label="Open Navigation Menu"
             >
-              <Menu size={22} />
+              <Menu size={20} />
             </button>
+
             <div 
               onClick={() => navigate("/dashboard")}
-              className="flex items-center gap-2 min-w-0 cursor-pointer"
+              className="flex items-center gap-2 min-w-0 flex-1 cursor-pointer select-none active:opacity-85 transition-opacity"
+              title="RefScan Home"
             >
-              <div className="w-7 h-7 rounded-lg bg-[#5B4BDB] text-white flex items-center justify-center flex-shrink-0 shadow-xs">
-                <Microscope size={15} />
-              </div>
+              {/* Compact 28-32px RefScan brand logo icon */}
+              <RefScanLogo size={30} rounded="lg" showGlow />
+
               <div className="min-w-0 flex items-center gap-1.5 truncate">
                 <span className="text-[#172554] font-bold text-sm tracking-tight flex-shrink-0">RefScan</span>
-                <span className="text-[#CBD5E1] text-xs">/</span>
+                <span className="text-[#CBD5E1] text-xs flex-shrink-0">/</span>
                 <span className="text-xs font-semibold text-[#64748B] truncate">{pageTitle}</span>
               </div>
             </div>
           </div>
 
-          {/* Contextual Quick Action */}
-          <div className="flex items-center gap-1 flex-shrink-0">
-            {location.pathname !== "/scan" && (
-              <button
-                onClick={() => navigate("/scan")}
-                className="w-10 h-10 rounded-xl text-[#5B4BDB] hover:bg-[#EEF0FF] active:scale-95 transition-all flex items-center justify-center cursor-pointer"
-                title="Scan Book Barcode"
-                aria-label="Scan Book Barcode"
-              >
-                <ScanLine size={18} />
-              </button>
-            )}
-            {location.pathname !== "/references" && (
-              <button
-                onClick={() => navigate("/references")}
-                className="w-10 h-10 rounded-xl text-[#64748B] hover:text-[#172554] hover:bg-[#F3F5FF] active:scale-95 transition-all flex items-center justify-center cursor-pointer"
-                title="Search Library"
-                aria-label="Search Library"
-              >
-                <Search size={18} />
-              </button>
-            )}
+          {/* Right Action: [Search] */}
+          <div className="flex items-center flex-shrink-0">
+            <button
+              onClick={() => navigate("/references")}
+              className="w-10 h-10 rounded-xl text-[#64748B] hover:text-[#5B4BDB] hover:bg-[#F3F5FF] active:scale-95 transition-all flex items-center justify-center cursor-pointer"
+              title="Search Library & Citations"
+              aria-label="Search Library"
+            >
+              <Search size={19} />
+            </button>
           </div>
         </header>
 

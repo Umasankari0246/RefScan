@@ -240,7 +240,7 @@ export function ScannerView({ onBookDetected, onManualInput, onEditManually, onC
   };
 
   return (
-    <div className="relative w-full rounded-2xl overflow-hidden bg-slate-950 aspect-[4/3] sm:aspect-video shadow-lg border border-[var(--border)] isolate select-none">
+    <div className="relative w-full rounded-2xl overflow-hidden bg-slate-950 min-h-[350px] sm:min-h-[400px] aspect-auto sm:aspect-video shadow-lg border border-[var(--border)] isolate select-none">
       {/* Hidden File Input for Barcode Photo Upload */}
       <input
         ref={fileInputRef}

@@ -129,25 +129,34 @@ export function RefScanChatbot() {
 
   return (
     <>
-      {/* Floating Action Button in Bottom-Right Corner */}
+      {/* Floating Action Button — Compact Circular on Mobile, Full Pill on Desktop */}
       {!isOpen && (
-        <div className="fixed bottom-18 md:bottom-6 right-5 z-50 animate-in fade-in duration-200">
+        <div className="fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom,0px))] md:bottom-6 right-3.5 sm:right-6 z-50 animate-in fade-in duration-200 select-none no-print">
           <button
             onClick={() => setIsOpen(true)}
-            aria-label="Open RefScan AI Chatbot"
-            className="group flex items-center gap-2.5 bg-[var(--surface-raised)] hover:bg-[var(--surface-muted)] text-[var(--text-primary)] px-3.5 py-2.5 rounded-xl shadow-md hover:shadow-lg transition-all duration-200 cursor-pointer border border-[var(--border)]"
+            aria-label="RefScan AI Assistant"
+            title="RefScan AI Assistant"
+            className="group flex items-center justify-center w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-gradient-to-tr from-[#5B4BDB] to-[#7928CA] text-white shadow-lg shadow-indigo-500/30 hover:shadow-indigo-500/45 active:scale-95 transition-all duration-200 cursor-pointer border border-white/25 md:w-auto md:h-auto md:rounded-xl md:px-3.5 md:py-2.5 md:bg-[var(--surface-raised)] md:hover:bg-[var(--surface-muted)] md:text-[var(--text-primary)] md:border-[var(--border)] md:shadow-md md:gap-2.5"
           >
-            <div className="w-6 h-6 rounded-lg bg-[var(--primary)] text-white flex items-center justify-center flex-shrink-0 shadow-2xs">
+            {/* Mobile AI Icon Only (44-48px circular button, no text) */}
+            <div className="md:hidden flex items-center justify-center">
+              <Sparkles size={20} className="text-white drop-shadow-xs" />
+            </div>
+
+            {/* Desktop Assistant Pill Elements */}
+            <div className="hidden md:flex w-6 h-6 rounded-lg bg-[var(--primary)] text-white items-center justify-center flex-shrink-0 shadow-2xs">
               <Bot size={14} />
             </div>
-            <span className="font-semibold text-xs tracking-tight text-[var(--text-primary)]">RefScan Assistant</span>
+            <span className="hidden md:inline font-semibold text-xs tracking-tight text-[var(--text-primary)]">
+              RefScan Assistant
+            </span>
           </button>
         </div>
       )}
 
       {/* Expandable Chatbot Window */}
       {isOpen && (
-        <div className="fixed bottom-18 md:bottom-6 right-4 sm:right-6 z-50 w-[calc(100vw-32px)] sm:w-[390px] h-[520px] max-h-[calc(100vh-100px)] bg-[var(--surface)] rounded-xl shadow-xl border border-[var(--border)] flex flex-col overflow-hidden animate-in zoom-in-95 duration-150 text-[var(--text-primary)]">
+        <div className="fixed bottom-[calc(4.5rem+env(safe-area-inset-bottom,0px))] md:bottom-6 right-2.5 sm:right-6 z-50 w-[calc(100vw-20px)] sm:w-[390px] h-[500px] max-h-[calc(100vh-110px)] bg-[var(--surface)] rounded-2xl shadow-2xl border border-[var(--border)] flex flex-col overflow-hidden animate-in zoom-in-95 duration-150 text-[var(--text-primary)]">
           {/* Header */}
           <div className="bg-[var(--surface)] border-b border-[var(--border)] px-4 py-3 flex items-center justify-between">
             <div className="flex items-center gap-2.5 min-w-0">

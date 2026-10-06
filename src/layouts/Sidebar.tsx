@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { useRefScan } from "../context/RefScanContext";
 import { PaperReference } from "../types";
+import { RefScanLogo } from "../components/common/RefScanLogo";
 
 interface Props {
   collapsed: boolean;
@@ -81,9 +82,7 @@ export default function Sidebar({ collapsed, onToggle, isMobile, onCloseMobile }
             }}
             className="flex items-center gap-3 cursor-pointer group min-w-0 flex-1"
           >
-            <div className="w-8 h-8 rounded-xl bg-[#5B4BDB] flex items-center justify-center text-white flex-shrink-0 shadow-sm shadow-indigo-500/20 group-hover:scale-105 transition-transform">
-              <Microscope size={18} />
-            </div>
+            <RefScanLogo size={34} rounded="xl" showGlow className="group-hover:scale-105 transition-transform" />
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1.5">
                 <span className="text-[#172554] font-bold text-base tracking-tight">RefScan</span>
@@ -97,11 +96,11 @@ export default function Sidebar({ collapsed, onToggle, isMobile, onCloseMobile }
         ) : (
           <button 
             onClick={onToggle}
-            className="w-9 h-9 rounded-xl bg-[#5B4BDB] flex items-center justify-center mx-auto text-white shadow-sm shadow-indigo-500/20 cursor-pointer hover:opacity-90 transition-opacity"
+            className="w-9 h-9 rounded-xl flex items-center justify-center mx-auto shadow-sm shadow-indigo-500/20 cursor-pointer hover:opacity-90 transition-opacity"
             title="Expand sidebar (Ctrl+B)"
             aria-label="Expand sidebar"
           >
-            <Microscope size={18} />
+            <RefScanLogo size={32} rounded="lg" />
           </button>
         )}
 

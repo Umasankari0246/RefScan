@@ -44,19 +44,22 @@ export function ScannerStatus({
   // State 1 — Camera Permission Required
   if (state === "permission_required") {
     return (
-      <div className="absolute inset-0 bg-[var(--surface)]/95 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center text-[var(--text-primary)] z-20 space-y-4">
-        <div className="w-16 h-16 rounded-2xl bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800/50 flex items-center justify-center text-[var(--primary)] shadow-xs">
-          <Camera size={32} />
+      <div className="absolute inset-0 bg-[var(--surface)]/95 backdrop-blur-md flex flex-col items-center justify-center p-3.5 sm:p-6 text-center text-[var(--text-primary)] z-20 space-y-2.5 sm:space-y-4 overflow-y-auto">
+        <div className="w-11 h-11 sm:w-16 sm:h-16 rounded-xl sm:rounded-2xl bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800/50 flex items-center justify-center text-[var(--primary)] shadow-xs flex-shrink-0">
+          <Camera size={22} className="sm:hidden" />
+          <Camera size={30} className="hidden sm:block" />
         </div>
-        <h3 className="text-xl sm:text-2xl font-bold tracking-tight text-[var(--text-primary)]">Camera Access Required</h3>
-        <p className="text-sm sm:text-base text-[var(--text-secondary)] max-w-md leading-relaxed">
+        <h3 className="text-base sm:text-xl md:text-2xl font-bold tracking-tight text-[var(--text-primary)] leading-snug">
+          Camera Access Required
+        </h3>
+        <p className="text-xs sm:text-sm text-[var(--text-secondary)] max-w-xs sm:max-w-md leading-relaxed">
           Allow camera access to scan physical book barcodes and retrieve verified academic metadata automatically.
         </p>
-        <div className="flex flex-col sm:flex-row gap-3 pt-2 w-full max-w-sm">
-          <Button onClick={onRequestPermission} variant="primary" size="lg" className="flex-1">
+        <div className="flex flex-row gap-2 sm:gap-3 pt-1 w-full max-w-xs sm:max-w-sm">
+          <Button onClick={onRequestPermission} variant="primary" size="md" className="flex-1 min-h-[40px] sm:min-h-[44px] text-xs sm:text-sm font-semibold">
             Allow Camera
           </Button>
-          <Button onClick={onManualInput} variant="outline" size="lg" className="flex-1">
+          <Button onClick={onManualInput} variant="outline" size="md" className="flex-1 min-h-[40px] sm:min-h-[44px] text-xs sm:text-sm font-semibold">
             Enter ISBN
           </Button>
         </div>
@@ -67,20 +70,23 @@ export function ScannerStatus({
   // State 9 — Camera Error / Access Denied
   if (state === "camera_error") {
     return (
-      <div className="absolute inset-0 bg-[var(--surface)]/95 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center text-[var(--text-primary)] z-20 space-y-4">
-        <div className="w-16 h-16 rounded-2xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800/50 flex items-center justify-center text-rose-500 shadow-xs">
-          <AlertCircle size={32} />
+      <div className="absolute inset-0 bg-[var(--surface)]/95 backdrop-blur-md flex flex-col items-center justify-center p-3.5 sm:p-6 text-center text-[var(--text-primary)] z-20 space-y-2.5 sm:space-y-4 overflow-y-auto">
+        <div className="w-11 h-11 sm:w-16 sm:h-16 rounded-xl sm:rounded-2xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800/50 flex items-center justify-center text-rose-500 shadow-xs flex-shrink-0">
+          <AlertCircle size={22} className="sm:hidden" />
+          <AlertCircle size={30} className="hidden sm:block" />
         </div>
-        <h3 className="text-xl sm:text-2xl font-bold text-[var(--text-primary)]">Unable to access the camera</h3>
-        <p className="text-sm sm:text-base text-rose-600 dark:text-rose-400 max-w-md leading-relaxed">
+        <h3 className="text-base sm:text-xl md:text-2xl font-bold text-[var(--text-primary)] leading-snug">
+          Unable to access the camera
+        </h3>
+        <p className="text-xs sm:text-sm text-rose-600 dark:text-rose-400 max-w-xs sm:max-w-md leading-relaxed">
           {errorMessage || "Unable to access the camera. Check camera permissions and try again."}
         </p>
-        <div className="flex flex-col sm:flex-row gap-3 pt-2 w-full max-w-sm">
-          <Button onClick={onRetry} variant="primary" size="lg" className="flex-1">
-            <RefreshCw size={18} className="mr-1.5" /> Try Again
+        <div className="flex flex-row gap-2 sm:gap-3 pt-1 w-full max-w-xs sm:max-w-sm">
+          <Button onClick={onRetry} variant="primary" size="md" className="flex-1 min-h-[40px] sm:min-h-[44px] text-xs sm:text-sm font-semibold">
+            <RefreshCw size={14} className="mr-1 sm:mr-1.5" /> Try Again
           </Button>
-          <Button onClick={onManualInput} variant="outline" size="lg" className="flex-1">
-            <Keyboard size={18} className="mr-1.5" /> Manual ISBN
+          <Button onClick={onManualInput} variant="outline" size="md" className="flex-1 min-h-[40px] sm:min-h-[44px] text-xs sm:text-sm font-semibold">
+            <Keyboard size={14} className="mr-1 sm:mr-1.5" /> Manual ISBN
           </Button>
         </div>
       </div>

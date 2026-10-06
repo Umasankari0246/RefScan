@@ -8,13 +8,13 @@ export function MobileBottomNav() {
   const papersCount = references.filter((r) => r.type === "PAPER").length;
 
   return (
-    <nav className="fixed bottom-0 inset-x-0 bg-[var(--surface)]/95 backdrop-blur-md border-t border-[var(--border)] px-3 pt-1.5 pb-[calc(0.5rem+env(safe-area-inset-bottom,0px))] z-40 md:hidden shadow-lg select-none">
-      <div className="flex items-center justify-around">
+    <nav className="fixed bottom-0 inset-x-0 bg-[var(--surface)]/95 backdrop-blur-md border-t border-[var(--border)] px-1.5 sm:px-3 pt-1.5 pb-[calc(0.5rem+env(safe-area-inset-bottom,0px))] z-40 md:hidden shadow-lg select-none">
+      <div className="flex items-center justify-around max-w-md mx-auto">
         {/* 1. Dashboard / Home */}
         <NavLink
           to="/dashboard"
           className={({ isActive }) =>
-            `flex flex-col items-center justify-center min-w-[56px] min-h-[46px] py-1 px-1.5 rounded-xl transition-colors cursor-pointer ${
+            `flex flex-col items-center justify-center min-w-[50px] sm:min-w-[56px] min-h-[46px] py-1 px-1 sm:px-1.5 rounded-xl transition-colors cursor-pointer ${
               isActive ? "text-[var(--primary)] font-bold" : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
             }`
           }
@@ -27,7 +27,7 @@ export function MobileBottomNav() {
         <NavLink
           to="/references"
           className={({ isActive }) =>
-            `flex flex-col items-center justify-center min-w-[56px] min-h-[46px] py-1 px-1.5 rounded-xl transition-colors relative cursor-pointer ${
+            `flex flex-col items-center justify-center min-w-[50px] sm:min-w-[56px] min-h-[46px] py-1 px-1 sm:px-1.5 rounded-xl transition-colors relative cursor-pointer ${
               isActive ? "text-[var(--primary)] font-bold" : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
             }`
           }
@@ -40,14 +40,14 @@ export function MobileBottomNav() {
               </span>
             )}
           </div>
-          <span className="text-[11px] mt-1 font-semibold leading-none">Library</span>
+          <span className="text-[10.5px] sm:text-[11px] mt-1 font-semibold leading-none">Library</span>
         </NavLink>
 
         {/* 3. CENTER PROMINENT SCAN BUTTON (Touch-optimized 48px) */}
         <NavLink
           to="/scan"
           className={() =>
-            `flex flex-col items-center justify-center -mt-5 cursor-pointer group`
+            `flex flex-col items-center justify-center -mt-5 cursor-pointer group flex-shrink-0 px-1`
           }
           aria-label="Scan Book Barcode"
         >
@@ -63,7 +63,7 @@ export function MobileBottomNav() {
         <NavLink
           to="/papers"
           className={({ isActive }) =>
-            `flex flex-col items-center justify-center min-w-[56px] min-h-[46px] py-1 px-1.5 rounded-xl transition-colors relative cursor-pointer ${
+            `flex flex-col items-center justify-center min-w-[50px] sm:min-w-[56px] min-h-[46px] py-1 px-1 sm:px-1.5 rounded-xl transition-colors relative cursor-pointer ${
               isActive ? "text-[var(--primary)] font-bold" : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
             }`
           }
@@ -76,20 +76,20 @@ export function MobileBottomNav() {
               </span>
             )}
           </div>
-          <span className="text-[11px] mt-1 font-semibold leading-none">Papers</span>
+          <span className="text-[10.5px] sm:text-[11px] mt-1 font-semibold leading-none">Papers</span>
         </NavLink>
 
         {/* 5. More / Settings */}
         <NavLink
           to="/settings"
           className={({ isActive }) =>
-            `flex flex-col items-center justify-center min-w-[56px] min-h-[46px] py-1 px-1.5 rounded-xl transition-colors cursor-pointer ${
+            `flex flex-col items-center justify-center min-w-[50px] sm:min-w-[56px] min-h-[46px] py-1 px-1 sm:px-1.5 rounded-xl transition-colors cursor-pointer ${
               isActive ? "text-[var(--primary)] font-bold" : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
             }`
           }
         >
           <User size={20} />
-          <span className="text-[11px] mt-1 font-semibold leading-none">Settings</span>
+          <span className="text-[10.5px] sm:text-[11px] mt-1 font-semibold leading-none">Settings</span>
         </NavLink>
       </div>
     </nav>

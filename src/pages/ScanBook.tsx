@@ -61,42 +61,44 @@ export default function ScanBook() {
   return (
     <div className="max-w-4xl mx-auto space-y-6 sm:space-y-8 text-[var(--text-primary)]">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[var(--border)]">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 pb-3 sm:pb-4 border-b border-[var(--border)]">
         <div>
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl sm:text-3xl font-bold text-[var(--text-primary)] tracking-tight">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-[var(--text-primary)] tracking-tight leading-tight">
               Book Barcode Scanner
             </h1>
-            <Badge variant="indigo" className="text-xs">
-              <Zap size={13} className="mr-1 inline" /> Live WebRTC
+            <Badge variant="indigo" className="text-[10.5px] sm:text-xs px-2 py-0.5 font-semibold">
+              <Zap size={12} className="mr-1 inline" /> Live WebRTC
             </Badge>
           </div>
-          <p className="text-sm sm:text-base text-[var(--text-secondary)] mt-1.5 leading-relaxed">
+          <p className="text-xs sm:text-sm md:text-base text-[var(--text-secondary)] mt-1 sm:mt-1.5 leading-relaxed">
             Scan physical book barcodes or enter ISBN to automatically pull verified bibliographic records.
           </p>
         </div>
 
         {/* Tab switcher */}
-        <div className="grid grid-cols-2 sm:flex bg-[var(--surface-muted)] p-1 rounded-2xl border border-[var(--border)] w-full sm:w-fit flex-shrink-0">
+        <div className="grid grid-cols-2 sm:flex bg-[var(--surface-muted)] p-1 rounded-xl sm:rounded-2xl border border-[var(--border)] w-full sm:w-fit flex-shrink-0">
           <button
             onClick={() => { setActiveTab("camera"); setErrorMsg(""); }}
-            className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all cursor-pointer min-h-[44px] touch-manipulation active:scale-[0.98] ${
+            className={`flex items-center justify-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer min-h-[40px] sm:min-h-[44px] touch-manipulation active:scale-[0.98] ${
               activeTab === "camera"
                 ? "bg-[var(--primary)] text-white shadow-xs"
                 : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
             }`}
           >
-            <Camera size={18} /> Camera Scanner
+            <Camera size={16} className="sm:w-[18px] sm:h-[18px] flex-shrink-0" />
+            <span className="truncate">Camera Scanner</span>
           </button>
           <button
             onClick={() => { setActiveTab("manual"); setErrorMsg(""); }}
-            className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all cursor-pointer min-h-[44px] touch-manipulation active:scale-[0.98] ${
+            className={`flex items-center justify-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer min-h-[40px] sm:min-h-[44px] touch-manipulation active:scale-[0.98] ${
               activeTab === "manual"
                 ? "bg-[var(--primary)] text-white shadow-xs"
                 : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
             }`}
           >
-            <Keyboard size={18} /> Manual ISBN
+            <Keyboard size={16} className="sm:w-[18px] sm:h-[18px] flex-shrink-0" />
+            <span className="truncate">Manual ISBN</span>
           </button>
         </div>
       </div>
