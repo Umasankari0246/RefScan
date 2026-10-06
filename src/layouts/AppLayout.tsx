@@ -4,10 +4,18 @@ import { Menu, Microscope, Search, ScanLine, Plus } from "lucide-react";
 import Sidebar from "./Sidebar";
 import { MobileBottomNav } from "../components/common/MobileBottomNav";
 import { RefScanChatbot } from "../components/chat/RefScanChatbot";
+import { useRefScan } from "../context/RefScanContext";
 
 export default function AppLayout() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { isAuthenticated, isAuthChecking } = useRefScan();
+
+  useEffect(() => {
+    if (!isAuthChecking && !isAuthenticated) {
+      navigate("/login", { replace: true });
+    }
+  }, [isAuthenticated, isAuthChecking, navigate]);
 
   const [collapsed, setCollapsed] = useState<boolean>(() => {
     const saved = localStorage.getItem("refscan_sidebar_collapsed");
@@ -62,6 +70,19 @@ export default function AppLayout() {
     if (path.startsWith("/upload")) return "Upload PDF";
     return "RefScan";
   }, [location.pathname]);
+
+  if (isAuthChecking) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-[#F8F7FF] text-[#172554]">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-[#5B4BDB] flex items-center justify-center text-white shadow-md shadow-indigo-500/20 animate-pulse">
+            <Microscope size={22} />
+          </div>
+          <p className="text-xs font-semibold text-[#64748B] tracking-wide">Connecting to RefScan Workspace...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen bg-[var(--bg-primary)] text-[var(--text-primary)] overflow-hidden transition-colors selection:bg-indigo-500 selection:text-white">

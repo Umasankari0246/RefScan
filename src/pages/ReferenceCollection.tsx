@@ -27,6 +27,7 @@ export default function ReferenceCollection() {
   const navigate = useNavigate();
   const {
     references,
+    addReference,
     stagedReferences,
     stagedSessionName,
     stagedSourceType,
@@ -133,16 +134,20 @@ export default function ReferenceCollection() {
     }
   };
 
-  const handleSaveSingle = (item: ExtractedReferenceItem) => {
+  const handleSaveSingle = async (item: ExtractedReferenceItem) => {
     const singleRef = convertExtractedItemToReference(item);
-    updateStagedReference({
-      ...item,
-      status: "already_saved",
-      existingReferenceId: singleRef.id,
-      selected: false
-    });
-    batchSaveSelectedReferences();
-    showToast(`Saved "${item.title.slice(0, 35)}..." to your library!`);
+    try {
+      await addReference(singleRef);
+      updateStagedReference({
+        ...item,
+        status: "already_saved",
+        existingReferenceId: singleRef.id,
+        selected: false
+      });
+      showToast(`Saved "${item.title.slice(0, 35)}..." to your library!`);
+    } catch (err: any) {
+      showToast(err.message || "Failed to save reference.");
+    }
   };
 
   const handleEditSave = () => {

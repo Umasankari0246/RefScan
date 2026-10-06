@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { 
   AlertTriangle, Telescope, Wand2, 
@@ -35,9 +35,27 @@ export default function ResearchGaps() {
   const [newGapType, setNewGapType] = useState<"unexplored" | "improvement" | "novelty" | "limitation">("unexplored");
   const [toastMsg, setToastMsg] = useState("");
 
+  useEffect(() => {
+    if (!selectedPaperForGap && papers.length > 0) {
+      setSelectedPaperForGap(paperId || papers[0].id);
+    }
+  }, [papers, paperId, selectedPaperForGap]);
+
+  const extractGapsForPaper = (p: PaperReference) => {
+    const rawList = p.researchGaps || p.researchGapsList || [];
+    return rawList.map((g: any, idx: number) => ({
+      ...g,
+      id: g.id ? `${p.id}_${g.id}` : `${p.id}_gap_${idx + 1}`,
+      strength: (g.strength || (idx === 0 ? "strong" : idx === 1 ? "moderate" : "emerging")) as "strong" | "moderate" | "emerging",
+      type: (g.type || (idx === 0 ? "limitation" : idx === 1 ? "unexplored" : "improvement")) as "unexplored" | "improvement" | "novelty" | "limitation",
+      paperTitle: p.title,
+      paperId: p.id,
+    }));
+  };
+
   const allGaps = paper 
-    ? paper.researchGaps.map((g) => ({ ...g, paperTitle: paper.title, paperId: paper.id })) 
-    : papers.flatMap((p) => p.researchGaps.map((g) => ({ ...g, paperTitle: p.title, paperId: p.id })));
+    ? extractGapsForPaper(paper)
+    : papers.flatMap((p) => extractGapsForPaper(p));
 
   const filteredGaps = allGaps.filter((g) => {
     const matchStrength = strengthFilter === "ALL" || g.strength === strengthFilter;
@@ -49,13 +67,30 @@ export default function ResearchGaps() {
   const moderate = allGaps.filter((g) => g.strength === "moderate");
   const emerging = allGaps.filter((g) => g.strength === "emerging");
 
+  const getPaperLimitations = (p: PaperReference): string[] => {
+    const raw = (Array.isArray(p.limitations) && p.limitations.length > 0)
+      ? p.limitations
+      : (Array.isArray(p.limitationsList) ? p.limitationsList : []);
+    return raw.map((l: any) => (typeof l === "string" ? l : l?.text || "")).filter(Boolean);
+  };
+
+  const getPaperFutureScope = (p: PaperReference): string[] => {
+    const base = (Array.isArray(p.futureScope) && p.futureScope.length > 0)
+      ? p.futureScope
+      : (Array.isArray(p.futureScopeList) ? p.futureScopeList : []);
+    return base
+      .concat((p as any).aiFutureScope || [])
+      .map((f: any) => (typeof f === "string" ? f : f?.text || ""))
+      .filter(Boolean);
+  };
+
   const allLimitations = paper 
-    ? paper.limitations 
-    : papers.flatMap((p) => p.limitations);
+    ? getPaperLimitations(paper) 
+    : papers.flatMap((p) => getPaperLimitations(p));
     
   const allFutureScope = paper 
-    ? (paper.futureScope.concat(paper.aiFutureScope || []))
-    : papers.flatMap((p) => p.futureScope.concat(p.aiFutureScope || []));
+    ? getPaperFutureScope(paper)
+    : papers.flatMap((p) => getPaperFutureScope(p));
 
   const handleExportGapsReport = () => {
     if (allGaps.length === 0) return;
@@ -69,7 +104,7 @@ export default function ResearchGaps() {
     md += `## 2. Identified Research Opportunities\n\n`;
 
     allGaps.forEach((g, idx) => {
-      md += `### ${idx + 1}. ${g.title} [${g.strength.toUpperCase()} / ${g.type.toUpperCase()}]\n`;
+      md += `### ${idx + 1}. ${g.title} [${(g.strength || "strong").toUpperCase()} / ${(g.type || "unexplored").toUpperCase()}]\n`;
       md += `- **Source Paper:** ${g.paperTitle}\n`;
       md += `- **Description:** ${g.description}\n`;
       if (g.whyIsGap) md += `- **Why this is a Gap:** ${g.whyIsGap}\n`;
@@ -83,7 +118,7 @@ export default function ResearchGaps() {
     downloadCitationFile(md, `refscan_research_gaps_report.md`, "text/markdown");
   };
 
-  const handleCreateCustomGap = (e: React.FormEvent) => {
+  const handleCreateCustomGap = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newGapTitle.trim() || !newGapDesc.trim() || !selectedPaperForGap) return;
 
@@ -101,12 +136,16 @@ export default function ResearchGaps() {
       isAiGenerated: false
     };
 
+    const existingGaps = targetPaper.researchGaps || targetPaper.researchGapsList || [];
+    const nextGaps = [createdGap, ...existingGaps];
+
     const updatedPaper: PaperReference = {
       ...targetPaper,
-      researchGaps: [createdGap, ...targetPaper.researchGaps]
+      researchGaps: nextGaps,
+      researchGapsList: nextGaps,
     };
 
-    updateReference(updatedPaper);
+    await updateReference(updatedPaper);
     setModalOpen(false);
     setNewGapTitle("");
     setNewGapDesc("");
@@ -253,7 +292,7 @@ export default function ResearchGaps() {
               <GapCard 
                 key={gap.id} 
                 gap={gap} 
-                onExplore={() => navigate(`/references/${gap.paperId}`)} 
+                onExplore={() => navigate(`/analysis/${gap.paperId}`)} 
                 onSearch={() => navigate(`/sites?q=${encodeURIComponent(gap.title)}`)}
               />
             ))}
@@ -406,18 +445,20 @@ function GapCard({ gap, onExplore, onSearch }: { gap: any; onExplore: () => void
     novelty: "bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800",
     limitation: "bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800",
   };
+  const safeType = (gap.type && typeColor[gap.type as keyof typeof typeColor]) ? (gap.type as keyof typeof typeColor) : "unexplored";
+  const safeStrength = (gap.strength === "strong" || gap.strength === "moderate" || gap.strength === "emerging") ? gap.strength : "moderate";
 
   return (
     <Card className="flex flex-col justify-between p-5 sm:p-6 hover:border-indigo-400 dark:hover:border-indigo-600 hover:shadow-xs transition-all">
       <div className="space-y-3">
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-2">
-            <div className={`w-7 h-7 rounded-lg border flex items-center justify-center ${typeColor[gap.type as keyof typeof typeColor]}`}>
-              {typeIcon[gap.type as keyof typeof typeIcon]}
+            <div className={`w-7 h-7 rounded-lg border flex items-center justify-center ${typeColor[safeType]}`}>
+              {typeIcon[safeType]}
             </div>
             <span className="text-sm sm:text-base font-bold text-[var(--text-primary)] leading-snug">{gap.title}</span>
           </div>
-          <GapBadge strength={gap.strength} />
+          <GapBadge strength={safeStrength} />
         </div>
         
         <p className="text-xs sm:text-sm text-[var(--text-secondary)] leading-relaxed">{gap.description}</p>

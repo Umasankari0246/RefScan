@@ -15,11 +15,20 @@ export type ReferenceTypeCategory =
 export interface SourceEvidence {
   pageNumber: number;
   originalText: string;
-  interpretation: string;
+  interpretation?: string;
+  quote?: string;
+}
+
+export interface PaperSection {
+  id: string;
+  title: string;
+  content: string;
+  pageNumber?: number;
 }
 
 export interface ReferenceBase {
   id: string;
+  userId?: string;
   type: ReferenceType;
   dateAdded: string;
   saved?: boolean;
@@ -133,6 +142,10 @@ export interface PaperReference extends ReferenceBase {
 
   futureScopeList?: Array<{ text: string; evidence?: SourceEvidence }>;
 
+  // Full Document Content & Extracted Sections
+  fullText?: string;
+  sections?: PaperSection[];
+
   // Raw Page Text & Scanned Detection
   rawTextByPage?: Array<{ pageNumber: number; text: string }>;
   isScannedOrImageBased?: boolean;
@@ -158,6 +171,23 @@ export interface PaperReference extends ReferenceBase {
   results?: string;
   analysisStatus: "pending" | "processing" | "complete" | "failed";
   citationStyle: CitationStyle;
+
+  // Direct Evidence Aliases & UI Helpers
+  evidenceProblem?: SourceEvidence;
+  evidenceObjective?: SourceEvidence;
+  evidenceMethodology?: SourceEvidence;
+  evidenceDataset?: SourceEvidence;
+  evidenceResults?: SourceEvidence;
+  algorithmsWithRoles?: Array<{ name: string; role: string; sourceEvidence?: SourceEvidence }>;
+
+  simplification?: {
+    about?: string;
+    whyNeeded?: string;
+    howSolved?: string;
+    achieved?: string;
+    missing?: string;
+    buildFromThis?: string;
+  };
 }
 
 export interface WebsiteReference extends ReferenceBase {
@@ -191,6 +221,7 @@ export interface ResearchGap {
 
 export interface Notification {
   id: string;
+  userId?: string;
   title: string;
   message: string;
   time: string;
@@ -224,6 +255,7 @@ export interface ExtractedReferenceItem {
 
 export interface CitationPaper {
   id: string;
+  userId?: string;
   title: string;
   subtitle?: string;
   referenceIds: string[];
@@ -235,3 +267,29 @@ export interface CitationPaper {
   references: Reference[];
   customNotes?: string;
 }
+
+export type UserRole = "admin" | "researcher" | "student" | "faculty";
+
+export interface UserDocument {
+  _id?: any;
+  id: string;
+  name: string;
+  email: string;
+  passwordHash?: string;
+  title: string;
+  institution?: string;
+  role: UserRole;
+  createdAt: string;
+  updatedAt: string;
+  lastLoginAt?: string;
+}
+
+export type SafeUser = Omit<UserDocument, "passwordHash" | "_id">;
+
+export interface AuthResponse {
+  success: boolean;
+  user: SafeUser;
+  token: string;
+  message?: string;
+}
+

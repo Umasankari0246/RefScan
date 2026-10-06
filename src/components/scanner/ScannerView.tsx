@@ -304,6 +304,7 @@ export function ScannerView({ onBookDetected, onManualInput, onEditManually, onC
             torchOn={torchOn}
             hasTorch={hasTorch}
             cameras={cameras}
+            facingMode={facingMode}
             onToggleTorch={handleToggleTorch}
             onSwitchCamera={handleToggleFacingMode}
             onUploadImage={() => fileInputRef.current?.click()}

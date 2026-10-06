@@ -1,31 +1,42 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { 
-  User, Quote, Palette, Bell, Database, Camera, Check, 
+  User, Quote, Palette, Database, Check, 
   Settings as SettingsIcon, Download, Upload, Trash2, 
-  RefreshCw, Server, AlertTriangle, ShieldCheck 
+  RefreshCw, Server, ShieldCheck, Users, Search, Edit, AlertCircle, ShieldAlert
 } from "lucide-react";
-import { Card, Button, Input, Select, Tabs, Modal, Badge } from "../components/ui";
+import { Card, Button, Input, Select, Modal, Badge } from "../components/ui";
 import { useRefScan } from "../context/RefScanContext";
 import { generateBatchBibliography, downloadCitationFile } from "../services/citationService";
 import { apiClient } from "../services/apiClient";
+import { SafeUser, UserRole } from "../types";
 
 export default function Settings() {
-  const { references, addReference, backendStatus, backendHealth, checkBackendHealth } = useRefScan();
+  const { references, addReference, deleteReference, backendStatus, backendHealth, checkBackendHealth, currentUser, refreshUserData } = useRefScan();
 
-  const [profile, setProfile] = useState(() => {
-    const saved = localStorage.getItem("refscan_profile");
-    return saved ? JSON.parse(saved) : { name: "Dr. Elena Vance", email: "elena.vance@mit.edu", title: "Principal Academic Researcher" };
+  const [profile, setProfile] = useState({
+    name: currentUser?.name || "Researcher",
+    email: currentUser?.email || "researcher@refscan.app",
+    title: currentUser?.title || "Academic Researcher",
+    institution: currentUser?.institution || "Academic Research Institution",
   });
+
+  useEffect(() => {
+    if (currentUser) {
+      setProfile({
+        name: currentUser.name || "",
+        email: currentUser.email || "",
+        title: currentUser.title || "",
+        institution: currentUser.institution || "",
+      });
+    }
+  }, [currentUser]);
 
   const [citStyle, setCitStyle] = useState(() => {
     return localStorage.getItem("refscan_default_style") || "IEEE";
   });
 
-  const [theme, setTheme] = useState(() => {
-    return localStorage.getItem("refscan_theme_mode") || "System";
-  });
-  const [notifs, setNotifs] = useState({ analysisComplete: true, newGap: true, weeklyDigest: false });
   const [saved, setSaved] = useState(false);
+  const [toastMsg, setToastMsg] = useState("");
   
   // Backend ping state
   const [pinging, setPinging] = useState(false);
@@ -33,49 +44,106 @@ export default function Settings() {
 
   // Clear modal state
   const [clearModalOpen, setClearModalOpen] = useState(false);
-  const [toastMsg, setToastMsg] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    localStorage.setItem("refscan_profile", JSON.stringify(profile));
-  }, [profile]);
+  // ── Admin Users Management State ──────────────────────────────────────────
+  const [usersList, setUsersList] = useState<SafeUser[]>([]);
+  const [usersLoading, setUsersLoading] = useState(false);
+  const [userSearch, setUserSearch] = useState("");
+  const [userError, setUserError] = useState("");
+  const [editModalUser, setEditModalUser] = useState<SafeUser | null>(null);
+  const [deleteModalUser, setDeleteModalUser] = useState<SafeUser | null>(null);
+  const [editForm, setEditForm] = useState<{ title: string; institution: string; role: UserRole }>({
+    title: "",
+    institution: "",
+    role: "researcher",
+  });
+
+  const fetchUsers = useCallback(async (query?: string) => {
+    if (currentUser?.role !== "admin") return;
+    setUsersLoading(true);
+    setUserError("");
+    try {
+      const res = await apiClient.getUsers(query);
+      setUsersList(res.users);
+    } catch (err: any) {
+      setUserError(err.message || "Failed to load registered users from MongoDB.");
+    } finally {
+      setUsersLoading(false);
+    }
+  }, [currentUser?.role]);
 
   useEffect(() => {
-    localStorage.setItem("refscan_default_style", citStyle);
-  }, [citStyle]);
+    if (currentUser?.role === "admin") {
+      fetchUsers(userSearch);
+    }
+  }, [currentUser?.role, fetchUsers, userSearch]);
 
-  const handleThemeChange = (selectedTheme: string) => {
-    setTheme(selectedTheme);
-    localStorage.setItem("refscan_theme_mode", selectedTheme);
-    if (selectedTheme === "Dark") {
-      document.documentElement.classList.add("dark");
-    } else if (selectedTheme === "Light") {
-      document.documentElement.classList.remove("dark");
-    } else {
-      // System mode: remove explicit class to let prefers-color-scheme media query handle it automatically
-      document.documentElement.classList.remove("dark");
+  const handleSaveProfile = async () => {
+    if (!currentUser) return;
+    try {
+      await apiClient.updateUser(currentUser.id, {
+        name: profile.name,
+        title: profile.title,
+        institution: profile.institution,
+      });
+      await refreshUserData();
+      setToastMsg("Researcher profile updated successfully in MongoDB.");
+      setTimeout(() => setToastMsg(""), 3500);
+    } catch (err: any) {
+      alert("Failed to update profile: " + err.message);
     }
   };
 
-  const save = () => {
-    setSaved(true);
-    setToastMsg("All workspace preferences updated successfully.");
-    setTimeout(() => {
-      setSaved(false);
-      setToastMsg("");
-    }, 3000);
+  const handleOpenEditUser = (u: SafeUser) => {
+    setEditModalUser(u);
+    setEditForm({
+      title: u.title || "",
+      institution: u.institution || "",
+      role: u.role || "researcher",
+    });
+  };
+
+  const handleConfirmEditUser = async () => {
+    if (!editModalUser) return;
+    try {
+      await apiClient.updateUser(editModalUser.id, {
+        title: editForm.title,
+        institution: editForm.institution,
+        role: editForm.role,
+      });
+      setToastMsg(`User "${editModalUser.email}" updated successfully.`);
+      setEditModalUser(null);
+      await fetchUsers(userSearch);
+      setTimeout(() => setToastMsg(""), 3500);
+    } catch (err: any) {
+      alert("Failed to update user: " + err.message);
+    }
+  };
+
+  const handleConfirmDeleteUser = async () => {
+    if (!deleteModalUser) return;
+    try {
+      await apiClient.deleteUser(deleteModalUser.id);
+      setToastMsg(`User "${deleteModalUser.email}" and their workspace data were removed from MongoDB.`);
+      setDeleteModalUser(null);
+      await fetchUsers(userSearch);
+      setTimeout(() => setToastMsg(""), 3500);
+    } catch (err: any) {
+      alert("Failed to delete user: " + err.message);
+    }
   };
 
   const handleExportData = (format: "bib" | "json" | "csv" | "ris") => {
     if (references.length === 0) {
-      alert("No references found in library to export.");
+      alert("No references found in your workspace library to export.");
       return;
     }
     const content = generateBatchBibliography(references, citStyle as any, format);
     const ext = format === "bib" ? ".bib" : format === "json" ? ".json" : format === "csv" ? ".csv" : ".ris";
     const mime = format === "json" ? "application/json" : format === "csv" ? "text/csv" : "text/plain";
-    downloadCitationFile(content, `refscan_backup_${Date.now()}${ext}`, mime);
-    setToastMsg(`Exported library as ${format.toUpperCase()} successfully.`);
+    downloadCitationFile(content, `refscan_export_${Date.now()}${ext}`, mime);
+    setToastMsg(`Exported ${references.length} references as ${format.toUpperCase()} successfully.`);
     setTimeout(() => setToastMsg(""), 3500);
   };
 
@@ -84,18 +152,18 @@ export default function Settings() {
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       try {
         const parsed = JSON.parse(event.target?.result as string);
         if (Array.isArray(parsed)) {
           let count = 0;
-          parsed.forEach((item: any) => {
+          for (const item of parsed) {
             if (item.title && item.type) {
-              addReference(item);
+              await addReference(item);
               count++;
             }
-          });
-          setToastMsg(`Successfully imported ${count} references from backup file!`);
+          }
+          setToastMsg(`Successfully imported ${count} references into your private MongoDB library!`);
           setTimeout(() => setToastMsg(""), 4000);
         } else {
           alert("Invalid backup format. Expected an array of references.");
@@ -107,17 +175,12 @@ export default function Settings() {
     reader.readAsText(file);
   };
 
-  const handleClearData = () => {
-    localStorage.removeItem("refscan_references");
-    localStorage.removeItem("refscan_notifications");
-    localStorage.removeItem("refscan_staged_references");
-    localStorage.removeItem("refscan_citation_papers");
-    localStorage.setItem("refscan_references", JSON.stringify([]));
+  const handleClearWorkspace = async () => {
     setClearModalOpen(false);
-    setToastMsg("Workspace library cleared.");
-    setTimeout(() => {
-      window.location.reload();
-    }, 800);
+    const ids = references.map((r) => r.id);
+    await Promise.all(ids.map((id) => deleteReference(id).catch(() => {})));
+    setToastMsg("Workspace library cleared from MongoDB.");
+    setTimeout(() => setToastMsg(""), 3500);
   };
 
   const handleTestBackend = async () => {
@@ -127,16 +190,16 @@ export default function Settings() {
       await checkBackendHealth();
       setPingResult({
         status: health.status,
-        count: health.libraryCount,
+        count: references.length,
         time: new Date().toLocaleTimeString(),
         dbMode: health.database?.status === "connected" 
           ? `MongoDB Active (${health.database.databaseName || "refscan"} @ ${health.database.host || "127.0.0.1:27017"})` 
-          : "In-Memory Store (Fallback)"
+          : "Database Offline"
       });
       setToastMsg(
         health.database?.status === "connected"
           ? "MongoDB Server & RefScan API connection verified: Online ✓"
-          : "Backend API online in In-Memory fallback mode."
+          : "MongoDB connection is offline. Please ensure mongod service is running."
       );
     } catch {
       setPingResult({
@@ -152,14 +215,14 @@ export default function Settings() {
   };
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6 sm:space-y-8 text-[var(--text-primary)]">
+    <div className="max-w-4xl mx-auto space-y-6 sm:space-y-8 text-[var(--text-primary)]">
       <div>
         <div className="flex items-center gap-2 text-xs font-bold text-[var(--primary)] uppercase tracking-wider mb-1">
-          <SettingsIcon size={15} /> Workspace Preferences
+          <SettingsIcon size={15} /> Workspace Preferences & Administration
         </div>
         <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-[var(--text-primary)] tracking-tight">Settings</h2>
         <p className="text-sm sm:text-base text-[var(--text-secondary)] mt-1">
-          Manage your research profile, citation defaults, workspace preferences, and data.
+          Manage your research profile, citation defaults, persistent MongoDB status, and user directory.
         </p>
       </div>
 
@@ -169,33 +232,209 @@ export default function Settings() {
         </div>
       )}
 
-      {/* Profile */}
+      {/* ── Researcher Profile ────────────────────────────────────────── */}
       <Card className="p-5 sm:p-7 space-y-5">
-        <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 text-[var(--primary)] flex items-center justify-center">
-            <User size={18} />
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 text-[var(--primary)] flex items-center justify-center">
+              <User size={18} />
+            </div>
+            <div>
+              <h3 className="text-base sm:text-lg font-bold text-[var(--text-primary)]">Researcher Profile</h3>
+              <p className="text-xs text-[var(--text-secondary)]">Authenticated account stored persistently in MongoDB</p>
+            </div>
           </div>
-          <h3 className="text-base sm:text-lg font-bold text-[var(--text-primary)]">Researcher Profile</h3>
+          {currentUser?.role === "admin" && (
+            <Badge variant="warning" className="text-xs font-bold uppercase tracking-wider">
+              System Admin
+            </Badge>
+          )}
         </div>
+
         <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-[var(--primary)] flex items-center justify-center text-white text-base font-semibold shadow-2xs">
+          <div className="w-12 h-12 rounded-xl bg-[var(--primary)] flex items-center justify-center text-white text-lg font-bold shadow-2xs uppercase">
             {profile.name ? profile.name[0] : "R"}
           </div>
           <div>
-            <span className="text-sm font-semibold text-[var(--text-primary)] block">{profile.name}</span>
-            <span className="text-xs text-[var(--text-muted)] block">{profile.title}</span>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-semibold text-[var(--text-primary)] block">{profile.name}</span>
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 uppercase">
+                {currentUser?.role || "Researcher"}
+              </span>
+            </div>
+            <span className="text-xs text-[var(--text-muted)] block">{profile.email}</span>
           </div>
         </div>
+
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
           <Input label="Full Name" value={profile.name} onChange={(v) => setProfile({ ...profile, name: v })} />
-          <Input label="Email Address" type="email" value={profile.email} onChange={(v) => setProfile({ ...profile, email: v })} />
-          <div className="sm:col-span-2">
-            <Input label="Academic Affiliation / Title" value={profile.title} onChange={(v) => setProfile({ ...profile, title: v })} />
-          </div>
+          <Input label="Email Address" type="email" value={profile.email} disabled />
+          <Input label="Academic Title / Position" value={profile.title} onChange={(v) => setProfile({ ...profile, title: v })} />
+          <Input label="Affiliation / Institution" value={profile.institution} onChange={(v) => setProfile({ ...profile, institution: v })} />
+        </div>
+
+        <div className="flex justify-end pt-2">
+          <Button onClick={handleSaveProfile} variant="primary" size="sm">
+            Save Profile Changes
+          </Button>
         </div>
       </Card>
 
-      {/* Citation */}
+      {/* ── User Accounts Directory (ADMIN ONLY) ─────────────────────────── */}
+      <Card className="p-5 sm:p-7 space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-amber-50 border border-amber-200 text-amber-700 flex items-center justify-center">
+              <Users size={18} />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base sm:text-lg font-bold text-[#172554]">MongoDB Users Directory</h3>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
+                  ADMIN ONLY
+                </span>
+              </div>
+              <p className="text-xs text-[#64748B]">Real user documents stored in MongoDB with secure bcrypt password hashing</p>
+            </div>
+          </div>
+          {currentUser?.role === "admin" && (
+            <Button 
+              onClick={() => fetchUsers(userSearch)} 
+              variant="outline" 
+              size="sm" 
+              disabled={usersLoading}
+              className="text-xs"
+            >
+              <RefreshCw size={13} className={`mr-1.5 ${usersLoading ? "animate-spin" : ""}`} /> Refresh Users
+            </Button>
+          )}
+        </div>
+
+        {currentUser?.role !== "admin" ? (
+          <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 flex items-start gap-3 text-xs sm:text-sm text-slate-700">
+            <ShieldAlert size={18} className="text-slate-500 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold text-slate-900">Directory Access Restricted</p>
+              <p className="text-slate-600 mt-0.5">
+                You are authenticated as <strong>{currentUser?.role || "researcher"}</strong>. The full registered Users table is restricted to System Administrators for multi-user privacy.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {/* Search Bar */}
+            <div className="relative">
+              <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#94A3B8]" />
+              <input 
+                type="text" 
+                placeholder="Search registered users by name, email, or institution..." 
+                value={userSearch} 
+                onChange={(e) => setUserSearch(e.target.value)}
+                className="w-full pl-9 pr-4 py-2 text-xs rounded-xl border border-[#E6E9F8] bg-[#F8F7FF] text-[#172554] placeholder-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-[#5B4BDB]"
+              />
+            </div>
+
+            {userError && (
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium flex items-center gap-2">
+                <AlertCircle size={15} /> {userError}
+              </div>
+            )}
+
+            {/* Users Table */}
+            <div className="overflow-x-auto rounded-xl border border-[#E6E9F8]">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-[#F8F7FF] text-[#64748B] font-semibold uppercase tracking-wider border-b border-[#E6E9F8]">
+                  <tr>
+                    <th className="px-4 py-3">User</th>
+                    <th className="px-4 py-3">Role</th>
+                    <th className="px-4 py-3">Title & Affiliation</th>
+                    <th className="px-4 py-3">Registered Date</th>
+                    <th className="px-4 py-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#E6E9F8] bg-white">
+                  {usersLoading ? (
+                    <tr>
+                      <td colSpan={5} className="px-4 py-8 text-center text-[#64748B]">
+                        <RefreshCw size={18} className="animate-spin inline-block mr-2 text-[#5B4BDB]" />
+                        Loading registered users from MongoDB...
+                      </td>
+                    </tr>
+                  ) : usersList.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-4 py-8 text-center text-[#64748B]">
+                        No registered users found matching the query.
+                      </td>
+                    </tr>
+                  ) : (
+                    usersList.map((u) => (
+                      <tr key={u.id} className="hover:bg-[#F9FAFB] transition-colors">
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-7 h-7 rounded-lg bg-indigo-50 text-[#5B4BDB] font-bold text-xs flex items-center justify-center uppercase">
+                              {u.name ? u.name[0] : "U"}
+                            </div>
+                            <div>
+                              <p className="font-semibold text-[#172554]">{u.name}</p>
+                              <p className="text-[11px] text-[#64748B]">{u.email}</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                            u.role === "admin" 
+                              ? "bg-amber-100 text-amber-800 border border-amber-200" 
+                              : u.role === "faculty"
+                              ? "bg-emerald-100 text-emerald-800 border border-emerald-200"
+                              : "bg-indigo-50 text-indigo-700 border border-indigo-200"
+                          }`}>
+                            {u.role}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-[#475569]">
+                          <p className="font-medium truncate max-w-[180px]">{u.title || "Researcher"}</p>
+                          <p className="text-[11px] text-[#94A3B8] truncate max-w-[180px]">{u.institution || "N/A"}</p>
+                        </td>
+                        <td className="px-4 py-3 text-[#64748B] text-[11px]">
+                          {u.createdAt ? new Date(u.createdAt).toLocaleDateString() : "N/A"}
+                        </td>
+                        <td className="px-4 py-3 text-right space-x-1.5">
+                          <button
+                            onClick={() => handleOpenEditUser(u)}
+                            className="p-1.5 rounded-lg text-[#64748B] hover:text-[#5B4BDB] hover:bg-indigo-50 transition-colors cursor-pointer"
+                            title="Edit User"
+                          >
+                            <Edit size={14} />
+                          </button>
+                          {u.id !== currentUser?.id && (
+                            <button
+                              onClick={() => setDeleteModalUser(u)}
+                              className="p-1.5 rounded-lg text-[#64748B] hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                              title="Delete User"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 flex items-center justify-between text-xs text-emerald-800">
+              <span className="flex items-center gap-1.5 font-medium">
+                <ShieldCheck size={16} className="text-emerald-600" />
+                MongoDB Persistence Active: Passwords securely hashed with bcryptjs. Raw hashes are never exposed.
+              </span>
+              <span className="font-bold">{usersList.length} Total Registered Users</span>
+            </div>
+          </div>
+        )}
+      </Card>
+
+      {/* ── Citation Preferences ────────────────────────────────────────── */}
       <Card className="p-5 sm:p-7 space-y-5">
         <div className="flex items-center gap-2.5">
           <div className="w-9 h-9 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 text-[var(--primary)] flex items-center justify-center">
@@ -213,12 +452,15 @@ export default function Settings() {
               { label: "Harvard Style", value: "Harvard" }
             ]} 
             value={citStyle} 
-            onChange={setCitStyle} 
+            onChange={(v) => {
+              setCitStyle(v);
+              localStorage.setItem("refscan_default_style", v);
+            }} 
           />
         </div>
       </Card>
 
-      {/* Backend & MongoDB Connection Diagnostics */}
+      {/* ── Backend & MongoDB Connection Diagnostics ────────────────────── */}
       <Card className="p-5 sm:p-7 space-y-5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
@@ -226,33 +468,23 @@ export default function Settings() {
               <Server size={18} />
             </div>
             <div>
-              <h3 className="text-base sm:text-lg font-bold text-[#172554]">Backend & MongoDB Database Status</h3>
-              <p className="text-xs text-[#64748B] mt-0.5">Persistent database connection, REST API endpoints, and collection metrics</p>
+              <h3 className="text-base sm:text-lg font-bold text-[#172554]">Backend & MongoDB Status</h3>
+              <p className="text-xs text-[#64748B] mt-0.5">Direct connection to MongoDB Community Server on port 27017</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <Badge 
-              variant={backendHealth?.database?.status === "connected" ? "success" : backendStatus === "online" ? "indigo" : "warning"} 
-              className="text-xs font-semibold"
-            >
-              {backendHealth?.database?.status === "connected" 
-                ? "MongoDB Connected ✓" 
-                : backendStatus === "online" 
-                ? "API Online (In-Memory)" 
-                : "Offline"}
-            </Badge>
-          </div>
+          <Badge 
+            variant={backendHealth?.database?.status === "connected" ? "success" : "warning"} 
+            className="text-xs font-semibold"
+          >
+            {backendHealth?.database?.status === "connected" ? "MongoDB Connected ✓" : "Offline"}
+          </Badge>
         </div>
 
         <div className="p-4 bg-[#F8F7FF] rounded-2xl border border-[#E6E9F8] space-y-2.5 text-xs sm:text-sm">
           <div className="flex justify-between items-center">
-            <span className="text-[#64748B]">Database Mode:</span>
-            <span className={`font-semibold px-2.5 py-0.5 rounded-lg border text-xs ${
-              backendHealth?.database?.status === "connected"
-                ? "text-emerald-700 bg-emerald-50 border-emerald-200"
-                : "text-amber-700 bg-amber-50 border-amber-200"
-            }`}>
-              {backendHealth?.database?.status === "connected" ? "MongoDB Server (Active & Persistent)" : "In-Memory Fallback"}
+            <span className="text-[#64748B]">Persistence Mode:</span>
+            <span className="font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-lg text-xs">
+              Strict MongoDB Storage (In-Memory Fallback Disabled)
             </span>
           </div>
 
@@ -267,18 +499,10 @@ export default function Settings() {
           </div>
 
           <div className="flex justify-between items-center">
-            <span className="text-[#64748B]">MongoDB Collections:</span>
-            <div className="flex gap-2 font-mono text-xs">
-              <span className="bg-white px-2 py-0.5 rounded border border-[#E6E9F8] text-[#172554]">
-                references: <strong>{backendHealth?.database?.collections?.references ?? references.length}</strong>
-              </span>
-              <span className="bg-white px-2 py-0.5 rounded border border-[#E6E9F8] text-[#172554]">
-                papers: <strong>{backendHealth?.database?.collections?.papers ?? 0}</strong>
-              </span>
-              <span className="bg-white px-2 py-0.5 rounded border border-[#E6E9F8] text-[#172554]">
-                citations: <strong>{backendHealth?.database?.collections?.citationPapers ?? 0}</strong>
-              </span>
-            </div>
+            <span className="text-[#64748B]">Your Isolated Bibliographic Records:</span>
+            <span className="font-bold text-[#172554] bg-white px-2.5 py-0.5 rounded border border-[#E6E9F8]">
+              {references.length} references
+            </span>
           </div>
 
           {pingResult && (
@@ -300,117 +524,104 @@ export default function Settings() {
             <RefreshCw size={14} className={`mr-1.5 ${pinging ? "animate-spin" : ""}`} />
             {pinging ? "Testing Connection..." : "Test Database Connection"}
           </Button>
-          <span className="text-[11px] text-[#64748B]">Connection String: <code className="text-[#5B4BDB] font-mono">mongodb://127.0.0.1:27017/refscan</code></span>
+          <span className="text-[11px] text-[#64748B]">URI: <code className="text-[#5B4BDB] font-mono">mongodb://127.0.0.1:27017/refscan</code></span>
         </div>
       </Card>
 
-      {/* Appearance */}
+      {/* ── Data Management & Export ──────────────────────────────────────── */}
       <Card className="p-5 sm:p-7 space-y-5">
         <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-xl bg-indigo-50 border border-indigo-200 text-[var(--primary)] flex items-center justify-center">
-            <Palette size={18} />
-          </div>
-          <h3 className="text-base sm:text-lg font-bold text-[var(--text-primary)]">Interface Theme</h3>
-        </div>
-        <div className="flex items-center gap-3 p-3.5 bg-[var(--surface-soft)] border border-[var(--border)] rounded-xl">
-          <span className="w-3 h-3 rounded-full bg-[#5B4BDB]" />
-          <div>
-            <p className="text-xs sm:text-sm font-semibold text-[var(--text-primary)]">Premium Colorful Academic Workspace</p>
-            <p className="text-xs text-[var(--text-muted)] mt-0.5">High-clarity light theme optimized for academic reading, citation analysis, and literature discovery.</p>
-          </div>
-        </div>
-      </Card>
-
-      {/* Notifications */}
-      <Card className="p-5 sm:p-7 space-y-5">
-        <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 text-[var(--primary)] flex items-center justify-center">
-            <Bell size={18} />
-          </div>
-          <h3 className="text-base sm:text-lg font-bold text-[var(--text-primary)]">Notifications & Alerts</h3>
-        </div>
-        <div className="space-y-3.5 divide-y divide-[var(--border)]">
-          {([
-            ["analysisComplete", "Analysis Complete Notifications", "Alert when uploaded paper AI analysis is ready"],
-            ["newGap", "Research Gap Detection Alerts", "Notify when a high-confidence research gap is identified"],
-            ["weeklyDigest", "Weekly Research Digest", "Receive an aggregated weekly summary of your library activity"],
-          ] as const).map(([key, label, sub], i) => (
-            <div key={key} className={`flex items-center justify-between gap-4 ${i > 0 ? "pt-3.5" : ""}`}>
-              <div>
-                <p className="text-xs sm:text-sm font-semibold text-[var(--text-primary)]">{label}</p>
-                <p className="text-xs text-[var(--text-muted)] mt-0.5">{sub}</p>
-              </div>
-              <button 
-                onClick={() => setNotifs((n) => ({ ...n, [key]: !n[key] }))} 
-                className={`w-11 h-6 rounded-full transition-colors ${notifs[key] ? "bg-[var(--primary)]" : "bg-[var(--border)]"} relative flex-shrink-0 cursor-pointer`}
-              >
-                <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow-xs transition-transform ${notifs[key] ? "translate-x-5.5" : "translate-x-0.5"}`} />
-              </button>
-            </div>
-          ))}
-        </div>
-      </Card>
-
-      {/* Data Management */}
-      <Card className="p-5 sm:p-7 space-y-5">
-        <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 text-[var(--primary)] flex items-center justify-center">
+          <div className="w-9 h-9 rounded-xl bg-indigo-50 border border-indigo-200 text-[#5B4BDB] flex items-center justify-center">
             <Database size={18} />
           </div>
-          <h3 className="text-base sm:text-lg font-bold text-[var(--text-primary)]">Data & Backup Management</h3>
+          <div>
+            <h3 className="text-base sm:text-lg font-bold text-[var(--text-primary)]">Data Export & Backup</h3>
+            <p className="text-xs text-[var(--text-secondary)]">Export your isolated bibliographic library</p>
+          </div>
         </div>
 
-        {/* Hidden file input */}
-        <input
-          type="file"
-          ref={fileInputRef}
-          onChange={handleImportJsonFile}
-          accept=".json"
-          className="hidden"
-        />
-
-        <div className="flex flex-wrap gap-2.5">
-          <Button onClick={() => handleExportData("bib")} variant="outline" size="sm" className="font-semibold text-xs">
-            <Download size={14} className="mr-1.5" /> Export BibTeX (.bib)
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1">
+          <Button onClick={() => handleExportData("bib")} variant="outline" size="sm" className="w-full text-xs font-semibold">
+            <Download size={13} className="mr-1.5" /> Export BibTeX
           </Button>
-          <Button onClick={() => handleExportData("json")} variant="outline" size="sm" className="font-semibold text-xs">
-            <Download size={14} className="mr-1.5" /> Export JSON Backup
+          <Button onClick={() => handleExportData("json")} variant="outline" size="sm" className="w-full text-xs font-semibold">
+            <Download size={13} className="mr-1.5" /> Export JSON
           </Button>
-          <Button onClick={() => handleExportData("csv")} variant="outline" size="sm" className="font-semibold text-xs">
-            <Download size={14} className="mr-1.5" /> Export CSV Spreadsheet
+          <Button onClick={() => handleExportData("csv")} variant="outline" size="sm" className="w-full text-xs font-semibold">
+            <Download size={13} className="mr-1.5" /> Export CSV
           </Button>
-          <Button onClick={() => fileInputRef.current?.click()} variant="secondary" size="sm" className="font-semibold text-xs">
-            <Upload size={14} className="mr-1.5" /> Import JSON Backup
+          <Button onClick={() => handleExportData("ris")} variant="outline" size="sm" className="w-full text-xs font-semibold">
+            <Download size={13} className="mr-1.5" /> Export RIS
           </Button>
         </div>
 
         <div className="pt-3 border-t border-[var(--border)] flex items-center justify-between">
           <div>
-            <p className="text-xs sm:text-sm font-semibold text-rose-700 dark:text-rose-400">Clear Workspace Data</p>
-            <p className="text-xs text-[var(--text-muted)]">Reset your local library to original default sample state</p>
+            <p className="text-xs sm:text-sm font-semibold text-[var(--text-primary)]">Import References</p>
+            <p className="text-xs text-[var(--text-muted)]">Import previously exported JSON references into your account</p>
           </div>
-          <Button onClick={() => setClearModalOpen(true)} variant="danger" size="sm" className="font-semibold text-xs">
-            <Trash2 size={14} className="mr-1.5" /> Reset Library
+          <input ref={fileInputRef} type="file" accept=".json" onChange={handleImportJsonFile} className="hidden" />
+          <Button onClick={() => fileInputRef.current?.click()} variant="outline" size="sm" className="text-xs font-semibold">
+            <Upload size={14} className="mr-1.5" /> Import JSON
           </Button>
         </div>
       </Card>
 
-      <div className="flex justify-end pt-3">
-        <Button onClick={save} variant="primary" size="md" className="font-semibold">Save Changes</Button>
-      </div>
-
-      {/* Clear Modal */}
-      <Modal open={clearModalOpen} onClose={() => setClearModalOpen(false)} title="Reset Workspace Library?">
-        <div className="space-y-4">
-          <div className="flex items-start gap-3 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 rounded-2xl p-4 text-rose-950 dark:text-rose-200 text-xs sm:text-sm">
-            <AlertTriangle size={20} className="text-rose-600 dark:text-rose-400 flex-shrink-0 mt-0.5" />
-            <p>
-              This will reset your local reference database and load the initial default demo papers and books.
-            </p>
+      {/* ── Edit User Modal (Admin) ─────────────────────────────────────── */}
+      <Modal
+        open={Boolean(editModalUser)}
+        onClose={() => setEditModalUser(null)}
+        title="Edit User Profile (Admin)"
+        size="md"
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button onClick={() => setEditModalUser(null)} variant="outline" size="sm">Cancel</Button>
+            <Button onClick={handleConfirmEditUser} variant="primary" size="sm">Save Changes</Button>
           </div>
-          <div className="flex justify-end gap-2.5 pt-3 border-t border-[var(--border)]">
-            <Button variant="ghost" size="md" onClick={() => setClearModalOpen(false)}>Cancel</Button>
-            <Button onClick={handleClearData} variant="danger" size="md">Confirm Reset</Button>
+        }
+      >
+        <div className="space-y-4 text-xs sm:text-sm">
+          <div>
+            <label className="text-xs font-semibold text-[#64748B] block mb-1">User Email</label>
+            <input type="text" value={editModalUser?.email || ""} disabled className="w-full px-3 py-2 rounded-lg border border-[#E6E9F8] bg-[#F1F5F9] text-[#64748B] font-mono text-xs" />
+          </div>
+          <Input label="Academic Title" value={editForm.title} onChange={(v) => setEditForm({ ...editForm, title: v })} />
+          <Input label="Institution / Affiliation" value={editForm.institution} onChange={(v) => setEditForm({ ...editForm, institution: v })} />
+          <div>
+            <label className="text-xs font-semibold text-[#64748B] block mb-1">Role</label>
+            <select
+              value={editForm.role}
+              onChange={(e) => setEditForm({ ...editForm, role: e.target.value as UserRole })}
+              className="w-full px-3 py-2 rounded-lg border border-[#E6E9F8] bg-white text-[#172554] text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+            >
+              <option value="researcher">Researcher</option>
+              <option value="admin">Administrator</option>
+              <option value="faculty">Faculty</option>
+              <option value="student">Student</option>
+            </select>
+          </div>
+        </div>
+      </Modal>
+
+      {/* ── Delete User Confirmation Modal (Admin) ──────────────────────── */}
+      <Modal
+        open={Boolean(deleteModalUser)}
+        onClose={() => setDeleteModalUser(null)}
+        title="Confirm User Deletion"
+        size="sm"
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button onClick={() => setDeleteModalUser(null)} variant="outline" size="sm">Cancel</Button>
+            <Button onClick={handleConfirmDeleteUser} variant="danger" size="sm">Delete User Account</Button>
+          </div>
+        }
+      >
+        <div className="space-y-3 text-xs sm:text-sm text-[#475569]">
+          <p>
+            Are you sure you want to permanently delete user <strong>{deleteModalUser?.name}</strong> (<code>{deleteModalUser?.email}</code>)?
+          </p>
+          <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700">
+            <strong>Warning:</strong> All references, papers, citations, and notifications owned by this user in MongoDB will also be permanently deleted.
           </div>
         </div>
       </Modal>

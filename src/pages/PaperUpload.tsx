@@ -68,8 +68,10 @@ export default function PaperUpload() {
             <FileText size={22} />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm sm:text-base font-semibold text-[var(--text-primary)] truncate">{activePaper.title}.pdf</p>
-            <p className="text-xs text-[var(--text-muted)] mt-0.5">Ready for AI extraction · Academic PDF</p>
+            <p className="text-sm sm:text-base font-bold text-[var(--text-primary)] leading-snug line-clamp-2">{activePaper.title}</p>
+            <p className="text-xs text-[var(--text-muted)] mt-0.5 truncate">
+              {activePaper.fileName || "Academic Document.pdf"} · {activePaper.authors?.slice(0, 2).join(", ") || "Academic PDF"}
+            </p>
           </div>
         </div>
 
@@ -123,20 +125,28 @@ export default function PaperUpload() {
         {done && (
           <div className="pt-4 border-t border-[var(--border)] space-y-3">
             <Button 
-              onClick={() => navigate("/collection")} 
+              onClick={() => navigate(activePaper ? `/analysis/${activePaper.id}` : "/papers")} 
               variant="primary" 
               size="lg" 
-              className="w-full font-semibold shadow-xs"
+              className="w-full font-semibold shadow-xs text-sm sm:text-base min-h-[48px]"
+            >
+              🔬 View In-Depth Paper Analysis & Extracted Sections →
+            </Button>
+            <Button 
+              onClick={() => navigate("/collection")} 
+              variant="outline" 
+              size="lg" 
+              className="w-full font-semibold min-h-[44px]"
             >
               📄 View Extracted Reference Collection (A4 Canvas) →
             </Button>
             <Button 
               onClick={() => navigate(activePaper ? `/references/${activePaper.id}` : "/references")} 
-              variant="outline" 
-              size="lg" 
-              className="w-full font-semibold"
+              variant="ghost" 
+              size="sm" 
+              className="w-full font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] min-h-[40px]"
             >
-              View Paper in Reference Library →
+              View Bibliographic Record in Library →
             </Button>
           </div>
         )}

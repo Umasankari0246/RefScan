@@ -81,15 +81,22 @@ function PaperCard({ paper, onView, onDelete }: { paper: PaperReference; onView:
         <div className="flex-1 min-w-0 w-full">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0 flex-1">
-              <p className="text-base sm:text-lg font-bold text-[var(--text-primary)] leading-snug hover:text-[var(--primary)] cursor-pointer" onClick={onView}>{paper.title}</p>
+              <p className="text-base sm:text-lg font-bold text-[var(--text-primary)] leading-snug hover:text-[var(--primary)] cursor-pointer" onClick={() => navigate(`/analysis/${paper.id}`)}>{paper.title}</p>
               <p className="text-xs sm:text-sm text-[var(--text-secondary)] mt-1 font-medium">{(paper.authors || []).join(", ") || "Unknown Authors"} · {paper.publicationYear || "Recent"}</p>
               <p className="text-xs text-[var(--text-muted)] mt-0.5">{paper.journal || paper.conference || "Conference Proceedings"}</p>
             </div>
             <div className="flex gap-1.5 flex-shrink-0">
               <button 
+                onClick={() => navigate(`/analysis/${paper.id}`)} 
+                className="p-2 rounded-xl text-[var(--primary)] hover:bg-indigo-50 dark:hover:bg-indigo-950/50 transition-all cursor-pointer" 
+                title="View In-Depth Paper Analysis"
+              >
+                <FileText size={16} />
+              </button>
+              <button 
                 onClick={onView} 
                 className="p-2 rounded-xl text-[var(--text-muted)] hover:text-[var(--primary)] hover:bg-indigo-50 dark:hover:bg-indigo-950/50 transition-all cursor-pointer" 
-                title="View Reference Details"
+                title="View Bibliographic Reference"
               >
                 <Eye size={16} />
               </button>

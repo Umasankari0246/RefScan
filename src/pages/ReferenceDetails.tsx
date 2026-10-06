@@ -299,6 +299,11 @@ export default function ReferenceDetails() {
                   <BookOpen size={15} className="mr-1.5" /> Edit Full Book Record
                 </Button>
               )}
+              {isPaper && (
+                <Button onClick={() => navigate(`/analysis/${paper?.id}`)} variant="secondary" size="sm" className="w-full sm:w-auto min-h-[44px] touch-manipulation active:scale-95">
+                  <FileText size={15} className="mr-1.5 text-[#5B4BDB]" /> View In-Depth Paper Analysis
+                </Button>
+              )}
               <Button onClick={() => navigate(`/citations?ref=${reference.id}`)} variant="primary" size="sm" className="w-full sm:w-auto text-white font-semibold min-h-[44px] touch-manipulation active:scale-95">
                 <Download size={15} className="mr-1.5" /> Open in Citation Studio
               </Button>

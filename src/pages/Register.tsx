@@ -1,20 +1,23 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router";
-import { Microscope, Eye, EyeOff, ArrowRight } from "lucide-react";
+import { Microscope, Eye, EyeOff, ArrowRight, Loader2 } from "lucide-react";
+import { useRefScan } from "../context/RefScanContext";
 
 export default function Register() {
   const navigate = useNavigate();
-  const [form, setForm] = useState({ name: "", email: "", password: "", confirm: "" });
+  const { register } = useRefScan();
+  const [form, setForm] = useState({ name: "", email: "", password: "", confirm: "", institution: "" });
   const [showPwd, setShowPwd] = useState(false);
   const [agreed, setAgreed] = useState(false);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const f = (k: string) => (v: string) => {
     setForm({ ...form, [k]: v });
     setError("");
   };
 
-  const handleRegister = (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.name.trim() || !form.email.trim() || !form.password.trim()) {
       setError("Please fill in all required fields.");
@@ -37,13 +40,22 @@ export default function Register() {
       return;
     }
 
-    localStorage.setItem("refscan_profile", JSON.stringify({
-      name: form.name.trim(),
-      email: form.email.trim(),
-      title: "Academic Researcher"
-    }));
-
-    navigate("/dashboard");
+    try {
+      setLoading(true);
+      setError("");
+      await register({
+        name: form.name.trim(),
+        email: form.email.trim(),
+        password: form.password,
+        title: "Academic Researcher",
+        institution: form.institution.trim() || "Academic Research Institution",
+      });
+      navigate("/dashboard");
+    } catch (err: any) {
+      setError(err.message || "Registration failed. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -70,6 +82,7 @@ export default function Register() {
             {[
               { label: "Full Name", key: "name", placeholder: "Dr. Jane Smith", type: "text" },
               { label: "Email Address", key: "email", placeholder: "you@university.edu", type: "email" },
+              { label: "Affiliation / Institution (Optional)", key: "institution", placeholder: "e.g. Stanford University", type: "text" },
             ].map(({ label, key, placeholder, type }) => (
               <div key={key} className="flex flex-col gap-1.5">
                 <label className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider">{label}</label>
@@ -78,7 +91,8 @@ export default function Register() {
                   value={(form as any)[key]} 
                   onChange={(e) => f(key)(e.target.value)} 
                   placeholder={placeholder} 
-                  className="w-full min-h-[44px] rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)] px-3.5 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-[var(--primary)] transition-all" 
+                  disabled={loading}
+                  className="w-full min-h-[44px] rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)] px-3.5 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-[var(--primary)] transition-all disabled:opacity-50" 
                 />
               </div>
             ))}
@@ -90,7 +104,8 @@ export default function Register() {
                   value={form.password} 
                   onChange={(e) => f("password")(e.target.value)} 
                   placeholder="Min. 6 characters" 
-                  className="w-full min-h-[44px] rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)] px-3.5 py-2.5 pr-11 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-[var(--primary)] transition-all" 
+                  disabled={loading}
+                  className="w-full min-h-[44px] rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)] px-3.5 py-2.5 pr-11 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-[var(--primary)] transition-all disabled:opacity-50" 
                 />
                 <button 
                   type="button" 
@@ -108,7 +123,8 @@ export default function Register() {
                 value={form.confirm} 
                 onChange={(e) => f("confirm")(e.target.value)} 
                 placeholder="••••••••" 
-                className="w-full min-h-[44px] rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)] px-3.5 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-[var(--primary)] transition-all" 
+                disabled={loading}
+                className="w-full min-h-[44px] rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)] px-3.5 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-[var(--primary)] transition-all disabled:opacity-50" 
               />
             </div>
             <label className="flex items-start gap-2.5 cursor-pointer pt-0.5">
@@ -116,6 +132,7 @@ export default function Register() {
                 type="checkbox" 
                 checked={agreed} 
                 onChange={(e) => { setAgreed(e.target.checked); setError(""); }} 
+                disabled={loading}
                 className="mt-0.5 w-4 h-4 rounded border-[var(--border)] accent-[var(--primary)]" 
               />
               <span className="text-xs text-[var(--text-secondary)] leading-relaxed">
@@ -124,12 +141,20 @@ export default function Register() {
             </label>
             <button 
               type="submit" 
-              className="w-full min-h-[46px] flex items-center justify-center gap-2 bg-[var(--primary)] hover:bg-[var(--primary-hover)] text-white font-semibold text-sm py-2.5 rounded-xl transition-all shadow-xs cursor-pointer mt-2"
+              disabled={loading}
+              className="w-full min-h-[46px] flex items-center justify-center gap-2 bg-[var(--primary)] hover:bg-[var(--primary-hover)] text-white font-semibold text-sm py-2.5 rounded-xl transition-all shadow-xs cursor-pointer mt-2 disabled:opacity-50"
             >
-              Create Account <ArrowRight size={16} />
+              {loading ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" /> Creating Account...
+                </>
+              ) : (
+                <>
+                  Create Account <ArrowRight size={16} />
+                </>
+              )}
             </button>
           </form>
-
 
           <p className="text-center text-xs text-[var(--text-secondary)] mt-6">
             Already have an account?{" "}

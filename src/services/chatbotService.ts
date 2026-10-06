@@ -1,4 +1,4 @@
-﻿/**
+/**
  * RefScan - AI Chatbot Service
  * Context-aware academic research and citation assistant.
  * Analyzes workspace references, active book/paper context, and citation rules.
@@ -236,12 +236,13 @@ export async function sendChatMessage(
 
   // 7. Research Gaps & Paper analysis
   if (query.includes("gap") || query.includes("research direction") || query.includes("limitation")) {
-    if (activePaper && activePaper.researchGaps.length > 0) {
-      const gapsList = activePaper.researchGaps.map((g, i) => `${i + 1}. **${g.title}** (${g.strength} confidence)\n   ${g.description}`).join("\n\n");
+    const activeGaps = activePaper ? (activePaper.researchGaps || activePaper.researchGapsList || []) : [];
+    if (activePaper && activeGaps.length > 0) {
+      const gapsList = activeGaps.map((g, i) => `${i + 1}. **${g.title}** (${g.strength || "moderate"} confidence)\n   ${g.description}`).join("\n\n");
       return {
         id: "msg_" + Date.now(),
         sender: "assistant",
-        text: `Identified **${activePaper.researchGaps.length} research gap(s)** in *${activePaper.title}*:\n\n${gapsList}`,
+        text: `Identified **${activeGaps.length} research gap(s)** in *${activePaper.title}*:\n\n${gapsList}`,
         timestamp,
         suggestions: ["Explain methodology of this paper", "Generate citation for this paper"]
       };

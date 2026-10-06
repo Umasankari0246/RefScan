@@ -266,8 +266,8 @@ export default function Dashboard() {
 
       case "GAP": {
         const matches = references.filter((r) => r.type === "PAPER").flatMap((p) => 
-          (p as PaperReference).researchGaps.map((g) => ({ ...g, paperTitle: p.title, paperId: p.id }))
-        ).filter((g) => !q || g.title.toLowerCase().includes(q) || g.description.toLowerCase().includes(q) || g.possibleProjectIdea?.toLowerCase().includes(q));
+          ((p as PaperReference).researchGaps || (p as PaperReference).researchGapsList || []).map((g) => ({ ...g, paperTitle: p.title, paperId: p.id }))
+        ).filter((g) => !q || g.title?.toLowerCase().includes(q) || g.description?.toLowerCase().includes(q) || g.possibleProjectIdea?.toLowerCase().includes(q));
 
         return (
           <div className="space-y-4">

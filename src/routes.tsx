@@ -1,4 +1,4 @@
-import { createBrowserRouter, Navigate, useParams } from "react-router";
+import { createBrowserRouter, Navigate, useRouteError } from "react-router";
 import AppLayout from "./layouts/AppLayout";
 import Landing from "./pages/Landing";
 import Dashboard from "./pages/Dashboard";
@@ -23,18 +23,45 @@ import Login from "./pages/Login";
 import Register from "./pages/Register";
 import NotFound from "./pages/NotFound";
 
-function AnalysisRedirect() {
-  const { id } = useParams();
-  return <Navigate to={id ? `/references/${id}` : "/references"} replace />;
+function RouteErrorBoundary() {
+  const error: any = useRouteError();
+  return (
+    <div className="min-h-screen flex items-center justify-center p-6 bg-[var(--bg-primary)] text-[var(--text-primary)]">
+      <div className="max-w-md w-full bg-[var(--surface)] border border-[var(--border)] rounded-2xl p-6 shadow-md space-y-4 text-center">
+        <div className="w-12 h-12 rounded-2xl bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 flex items-center justify-center mx-auto font-bold text-xl">
+          !
+        </div>
+        <h2 className="text-lg font-bold">Something went wrong loading this view</h2>
+        <p className="text-xs sm:text-sm text-[var(--text-secondary)] leading-relaxed">
+          {error?.message || "An unexpected rendering error occurred."}
+        </p>
+        <div className="flex justify-center gap-3 pt-2">
+          <a
+            href="/dashboard"
+            className="px-4 py-2 rounded-xl bg-[var(--primary)] text-white text-xs font-semibold hover:opacity-90 transition-opacity"
+          >
+            Back to Dashboard
+          </a>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-4 py-2 rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] text-xs font-semibold hover:bg-[var(--surface-hover)] cursor-pointer"
+          >
+            Reload Page
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export const router = createBrowserRouter([
-  { path: "/", element: <Landing /> },
-  { path: "/login", element: <Login /> },
-  { path: "/register", element: <Register /> },
+  { path: "/", element: <Landing />, errorElement: <RouteErrorBoundary /> },
+  { path: "/login", element: <Login />, errorElement: <RouteErrorBoundary /> },
+  { path: "/register", element: <Register />, errorElement: <RouteErrorBoundary /> },
   { path: "/404", element: <NotFound /> },
   {
     element: <AppLayout />,
+    errorElement: <RouteErrorBoundary />,
     children: [
       { path: "/dashboard", element: <Dashboard /> },
       { path: "/scan", element: <ScanBook /> },

@@ -17,7 +17,7 @@ interface Props {
 
 export default function Sidebar({ collapsed, onToggle, isMobile, onCloseMobile }: Props) {
   const navigate = useNavigate();
-  const { references, stagedReferences, citationPapers } = useRefScan();
+  const { references, stagedReferences, citationPapers, currentUser, logout } = useRefScan();
 
   const papersCount = references.filter((r) => r.type === "PAPER").length;
   const stagedCount = stagedReferences.length;
@@ -222,20 +222,30 @@ export default function Sidebar({ collapsed, onToggle, isMobile, onCloseMobile }
       {/* ── Footer / Profile ───────────────────────────────────────── */}
       <div className="p-3 border-t border-[#E6E9F8] flex-shrink-0 bg-white/40">
         <div className={`flex items-center gap-2.5 px-2.5 py-2 rounded-xl border border-[#E6E9F8] bg-white shadow-2xs ${collapsed && !isMobile ? "justify-center px-0" : ""}`}>
-          <div className="w-8 h-8 rounded-lg bg-[#EEF0FF] text-[#5B4BDB] border border-[#DDD8FE] flex items-center justify-center font-bold text-xs flex-shrink-0">
-            R
+          <div className="w-8 h-8 rounded-lg bg-[#EEF0FF] text-[#5B4BDB] border border-[#DDD8FE] flex items-center justify-center font-bold text-xs flex-shrink-0 uppercase">
+            {currentUser?.name ? currentUser.name[0] : "U"}
           </div>
 
           {(!collapsed || isMobile) && (
             <div className="flex-1 min-w-0 pr-1">
-              <p className="text-xs font-bold text-[#172554] truncate">Researcher</p>
-              <p className="text-[11px] text-[#64748B] truncate">workspace@refscan.app</p>
+              <div className="flex items-center gap-1.5">
+                <p className="text-xs font-bold text-[#172554] truncate">{currentUser?.name || "Researcher"}</p>
+                {currentUser?.role === "admin" && (
+                  <span className="px-1 py-0.2 rounded text-[9px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                    ADMIN
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-[#64748B] truncate">{currentUser?.email || "user@refscan.app"}</p>
             </div>
           )}
 
           {(!collapsed || isMobile) && (
             <button 
-              onClick={() => navigate("/login")} 
+              onClick={async () => {
+                await logout();
+                navigate("/login");
+              }} 
               className="p-1.5 rounded-lg text-[#94A3B8] hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer flex-shrink-0"
               title="Sign Out"
               aria-label="Sign out"

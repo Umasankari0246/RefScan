@@ -11,8 +11,10 @@
   },
   "dependencies": {
     "@zxing/library": "^0.23.0",
+    "bcryptjs": "^3.0.3",
     "dotenv": "^18.0.2",
     "html2canvas": "^1.4.1",
+    "jsonwebtoken": "^9.0.3",
     "jspdf": "^4.2.1",
     "lucide-react": "^1.37.0",
     "mongodb": "^7.6.0",
@@ -24,6 +26,8 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.0.0",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",

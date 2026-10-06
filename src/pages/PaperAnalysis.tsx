@@ -5,7 +5,7 @@ import {
   BookOpen, Target, Quote, Sparkles,
   Bookmark, BookmarkCheck, Database, Award, BarChart3, HelpCircle,
   Search, GitCompare, ExternalLink, ShieldAlert, Layers, CheckSquare,
-  FileText, Code, Cpu, ChevronDown, ChevronUp, Copy, Check
+  FileText, Code, Cpu, ChevronDown, ChevronUp, Copy, Check, AlignLeft
 } from "lucide-react";
 import { Card, Button, Badge, GapBadge, SearchBar } from "../components/ui";
 import { useRefScan } from "../context/RefScanContext";
@@ -14,7 +14,8 @@ import { parseSingleReferenceText, detectDuplicates } from "../services/referenc
 
 function EvidenceBox({ evidence, title = "Source Evidence" }: { evidence?: SourceEvidence; title?: string }) {
   const [open, setOpen] = useState(false);
-  if (!evidence || !evidence.quote) return null;
+  const quoteText = evidence?.originalText || (evidence as any)?.quote;
+  if (!evidence || !quoteText) return null;
 
   return (
     <div className="mt-3">
@@ -30,7 +31,7 @@ function EvidenceBox({ evidence, title = "Source Evidence" }: { evidence?: Sourc
             <span>Exact Extracted Quote (Page {evidence.pageNumber}):</span>
           </div>
           <p className="italic text-[#334155] bg-white p-2.5 rounded-lg border border-[#E6E9F8] font-serif leading-relaxed">
-            "{evidence.quote}"
+            "{quoteText}"
           </p>
           {evidence.interpretation && (
             <p className="text-[#64748B] text-[11px] pt-1 border-t border-[#E6E9F8]">
@@ -91,7 +92,11 @@ export default function PaperAnalysis() {
   const { references, updateReference, setStagedReferences } = useRefScan();
 
   const [refSearch, setRefSearch] = useState("");
-  const [activeTab, setActiveTab] = useState<"structured" | "rawPages" | "simplified" | "references">("structured");
+  const [sectionSearch, setSectionSearch] = useState("");
+  const [continuousReading, setContinuousReading] = useState(false);
+  const [copiedSectionId, setCopiedSectionId] = useState<string | null>(null);
+  const [copiedFullDoc, setCopiedFullDoc] = useState(false);
+  const [activeTab, setActiveTab] = useState<"structured" | "sections" | "rawPages" | "simplified" | "references">("structured");
   const [selectedRawPage, setSelectedRawPage] = useState<number>(0);
   const [copiedRawText, setCopiedRawText] = useState(false);
   const [toastMsg, setToastMsg] = useState("");
@@ -132,6 +137,22 @@ export default function PaperAnalysis() {
     navigator.clipboard.writeText(text);
     setCopiedRawText(true);
     setTimeout(() => setCopiedRawText(false), 2000);
+  };
+
+  const handleCopySection = (id: string, text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedSectionId(id);
+    setTimeout(() => setCopiedSectionId(null), 2000);
+  };
+
+  const handleCopyFullDoc = () => {
+    const textToCopy =
+      paper.fullText ||
+      (paper.sections || []).map((s) => `## ${s.title}\n\n${s.content}`).join("\n\n") ||
+      (paper.rawTextByPage || []).map((p) => `[Page ${p.pageNumber}]\n${p.text}`).join("\n\n");
+    navigator.clipboard.writeText(textToCopy);
+    setCopiedFullDoc(true);
+    setTimeout(() => setCopiedFullDoc(false), 2000);
   };
 
   return (
@@ -256,6 +277,7 @@ export default function PaperAnalysis() {
       <div className="flex gap-4 sm:gap-6 border-b border-[#E6E9F8] w-full overflow-x-auto select-none">
         {[
           { id: "structured", label: "Evidence-Based Structured Analysis" },
+          { id: "sections", label: `Full Paper Sections & Content (${paper.sections?.length || 0}) 📖` },
           { id: "rawPages", label: `Page-by-Page Raw Text (${paper.rawTextByPage?.length || 1})` },
           { id: "simplified", label: "Plain-Language Summary 💡" },
           { id: "references", label: `Cited References (${paper.references?.length || 0})` },
@@ -334,10 +356,10 @@ export default function PaperAnalysis() {
             defaultOpen={true}
           >
             <p className="text-sm sm:text-base text-[#172554] leading-relaxed font-medium">
-              {paper.researchProblem || "Not available in the uploaded paper."}
+              {paper.problemStatement || paper.researchProblem || "Not available in the uploaded paper."}
             </p>
-            {paper.evidenceProblem && (
-              <EvidenceBox evidence={paper.evidenceProblem} title="Problem Evidence" />
+            {(paper.evidenceProblem || paper.problemStatementEvidence) && (
+              <EvidenceBox evidence={paper.evidenceProblem || paper.problemStatementEvidence} title="Problem Evidence" />
             )}
           </CollapsibleSection>
 
@@ -348,10 +370,10 @@ export default function PaperAnalysis() {
             defaultOpen={true}
           >
             <p className="text-sm sm:text-base text-[#172554] leading-relaxed font-medium">
-              {paper.researchObjective || "Not available in the uploaded paper."}
+              {paper.objectives || paper.researchObjective || "Not available in the uploaded paper."}
             </p>
-            {paper.evidenceObjective && (
-              <EvidenceBox evidence={paper.evidenceObjective} title="Objective Evidence" />
+            {(paper.evidenceObjective || paper.objectivesEvidence) && (
+              <EvidenceBox evidence={paper.evidenceObjective || paper.objectivesEvidence} title="Objective Evidence" />
             )}
           </CollapsibleSection>
 
@@ -364,6 +386,9 @@ export default function PaperAnalysis() {
             <p className="text-sm sm:text-base text-[#172554] leading-relaxed font-medium">
               {paper.existingMethod || "Not available in the uploaded paper."}
             </p>
+            {paper.existingMethodEvidence && (
+              <EvidenceBox evidence={paper.existingMethodEvidence} title="Existing Baseline Evidence" />
+            )}
           </CollapsibleSection>
 
           {/* 6. Proposed Method */}
@@ -373,8 +398,11 @@ export default function PaperAnalysis() {
             defaultOpen={true}
           >
             <p className="text-sm sm:text-base text-[#334155] leading-relaxed font-medium">
-              {paper.methodology || "Not available in the uploaded paper."}
+              {paper.proposedMethod || paper.methodology || "Not available in the uploaded paper."}
             </p>
+            {paper.proposedMethodEvidence && (
+              <EvidenceBox evidence={paper.proposedMethodEvidence} title="Proposed Method Evidence" />
+            )}
           </CollapsibleSection>
 
           {/* 7. Methodology */}
@@ -384,10 +412,10 @@ export default function PaperAnalysis() {
             defaultOpen={false}
           >
             <p className="text-sm sm:text-base text-[#334155] leading-relaxed">
-              {paper.methodology || "Not available in the uploaded paper."}
+              {paper.methodology || paper.proposedMethod || "Not available in the uploaded paper."}
             </p>
-            {paper.evidenceMethodology && (
-              <EvidenceBox evidence={paper.evidenceMethodology} title="Methodology Evidence" />
+            {(paper.evidenceMethodology || paper.methodologyEvidence) && (
+              <EvidenceBox evidence={paper.evidenceMethodology || paper.methodologyEvidence} title="Methodology Evidence" />
             )}
           </CollapsibleSection>
 
@@ -395,7 +423,13 @@ export default function PaperAnalysis() {
           <CollapsibleSection
             title="8. Algorithms & Computational Models"
             icon={<Code size={18} className="text-purple-600" />}
-            badge={paper.algorithms?.length ? <Badge variant="purple" className="text-[10px] ml-auto">{paper.algorithms.length} models</Badge> : undefined}
+            badge={
+              (paper.algorithmsWithRoles?.length || paper.algorithmsList?.length || paper.algorithms?.length) ? (
+                <Badge variant="purple" className="text-[10px] ml-auto">
+                  {(paper.algorithmsWithRoles || paper.algorithmsList || paper.algorithms)?.length} models
+                </Badge>
+              ) : undefined
+            }
             defaultOpen={false}
           >
             {paper.algorithmsWithRoles && paper.algorithmsWithRoles.length > 0 ? (
@@ -413,6 +447,25 @@ export default function PaperAnalysis() {
                     </p>
                     {alg.sourceEvidence && (
                       <EvidenceBox evidence={alg.sourceEvidence} title="Algorithm Evidence" />
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : paper.algorithmsList && paper.algorithmsList.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {paper.algorithmsList.map((alg, idx) => (
+                  <div key={idx} className="p-4 rounded-2xl bg-[#F8F7FF] border border-[#DDD8FE] space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-sm text-[#172554]">{alg.name}</span>
+                      <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-[#EEF0FF] text-[#5B4BDB]">
+                        Algorithm #{idx + 1}
+                      </span>
+                    </div>
+                    <p className="text-xs text-[#475569] leading-relaxed">
+                      <strong className="text-[#172554]">Functional Role:</strong> {alg.roleOrUse}
+                    </p>
+                    {alg.evidence && (
+                      <EvidenceBox evidence={alg.evidence} title="Algorithm Evidence" />
                     )}
                   </div>
                 ))}
@@ -436,17 +489,26 @@ export default function PaperAnalysis() {
             icon={<Database size={18} className="text-sky-600" />}
             defaultOpen={false}
           >
-            {paper.dataset ? (
+            {paper.dataset || paper.datasetInfo ? (
               <div className="space-y-2 text-xs sm:text-sm">
                 <div>
                   <span className="text-[#64748B]">Dataset:</span>
-                  <span className="font-semibold text-[#172554] ml-2">{paper.dataset.name || "Custom Dataset"}</span>
+                  <span className="font-semibold text-[#172554] ml-2">
+                    {paper.dataset?.name || paper.datasetInfo?.name || "Empirical Dataset"}
+                  </span>
                 </div>
                 <div>
                   <span className="text-[#64748B]">Size / Scale:</span>
-                  <span className="font-semibold text-[#172554] ml-2">{paper.dataset.size || "Not specified"}</span>
+                  <span className="font-semibold text-[#172554] ml-2">
+                    {paper.dataset?.size || paper.datasetInfo?.size || "Standard benchmark volume"}
+                  </span>
                 </div>
-                {paper.dataset.features && paper.dataset.features.length > 0 && (
+                {(paper.dataset?.details || paper.datasetInfo?.details) && (
+                  <p className="text-xs text-[#475569] bg-[#F8F7FF] p-3 rounded-xl border border-[#E6E9F8] leading-relaxed">
+                    {paper.dataset?.details || paper.datasetInfo?.details}
+                  </p>
+                )}
+                {paper.dataset?.features && paper.dataset.features.length > 0 && (
                   <div className="pt-1">
                     <span className="text-[#64748B] block mb-1">Key Features:</span>
                     <div className="flex flex-wrap gap-1">
@@ -458,8 +520,8 @@ export default function PaperAnalysis() {
                     </div>
                   </div>
                 )}
-                {paper.evidenceDataset && (
-                  <EvidenceBox evidence={paper.evidenceDataset} title="Dataset Evidence" />
+                {(paper.evidenceDataset || paper.datasetInfo?.evidence) && (
+                  <EvidenceBox evidence={paper.evidenceDataset || paper.datasetInfo?.evidence} title="Dataset Evidence" />
                 )}
               </div>
             ) : (
@@ -473,9 +535,9 @@ export default function PaperAnalysis() {
             icon={<Cpu size={18} className="text-indigo-600" />}
             defaultOpen={false}
           >
-            {paper.technologies && paper.technologies.length > 0 ? (
+            {(paper.technologies && paper.technologies.length > 0) || (paper.toolsAndTechList && paper.toolsAndTechList.length > 0) ? (
               <div className="flex flex-wrap gap-2">
-                {paper.technologies.map((tech) => (
+                {(paper.technologies || paper.toolsAndTechList?.map((t) => t.name) || []).map((tech) => (
                   <span key={tech} className="text-xs font-semibold bg-[#EEF0FF] text-[#5B4BDB] px-3 py-1 rounded-xl border border-[#DDD8FE]">
                     {tech}
                   </span>
@@ -508,11 +570,21 @@ export default function PaperAnalysis() {
               <div>
                 <span className="text-[#64748B] font-medium block mb-1">Findings Summary:</span>
                 <p className="text-xs sm:text-sm text-[#172554] leading-relaxed font-semibold bg-[#F8F7FF] p-3 rounded-xl border border-[#E6E9F8]">
-                  {paper.results || "Not available in the uploaded paper."}
+                  {paper.results || (paper.resultsAndFindingsList && paper.resultsAndFindingsList.length > 0 ? paper.resultsAndFindingsList.map((r) => r.text).join(" ") : undefined) || "Not available in the uploaded paper."}
                 </p>
+                {paper.resultsAndFindingsList && paper.resultsAndFindingsList.length > 0 && (
+                  <ul className="mt-2 space-y-1.5">
+                    {paper.resultsAndFindingsList.map((r, i) => (
+                      <li key={i} className="text-xs text-[#334155] flex items-start gap-2">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mt-1.5 flex-shrink-0" />
+                        <span>{r.text}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
-              {paper.evidenceResults && (
-                <EvidenceBox evidence={paper.evidenceResults} title="Results Evidence" />
+              {(paper.evidenceResults || paper.resultsAndFindingsList?.[0]?.evidence) && (
+                <EvidenceBox evidence={paper.evidenceResults || paper.resultsAndFindingsList?.[0]?.evidence} title="Results Evidence" />
               )}
             </div>
           </CollapsibleSection>
@@ -529,6 +601,15 @@ export default function PaperAnalysis() {
                   <li key={i} className="flex items-start gap-2">
                     <span className="w-1.5 h-1.5 rounded-full bg-amber-500 mt-2 flex-shrink-0" />
                     <p className="text-[#475569] leading-relaxed">{l}</p>
+                  </li>
+                ))}
+              </ul>
+            ) : paper.limitationsList && paper.limitationsList.length > 0 ? (
+              <ul className="space-y-2 text-xs sm:text-sm">
+                {paper.limitationsList.map((l, i) => (
+                  <li key={i} className="flex items-start gap-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 mt-2 flex-shrink-0" />
+                    <p className="text-[#475569] leading-relaxed">{l.text}</p>
                   </li>
                 ))}
               </ul>
@@ -601,14 +682,37 @@ export default function PaperAnalysis() {
                   </li>
                 ))}
               </ul>
+            ) : paper.futureScopeList && paper.futureScopeList.length > 0 ? (
+              <ul className="space-y-2 text-xs sm:text-sm">
+                {paper.futureScopeList.map((f, i) => (
+                  <li key={i} className="flex items-start gap-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#5B4BDB] mt-2 flex-shrink-0" />
+                    <p className="text-[#475569] leading-relaxed">{f.text}</p>
+                  </li>
+                ))}
+              </ul>
             ) : (
               <p className="text-xs text-[#64748B] italic">Not available in the uploaded paper.</p>
             )}
           </CollapsibleSection>
 
-          {/* 15. Extracted References Summary */}
+          {/* 15. Conclusion */}
           <CollapsibleSection
-            title="15. Extracted References Summary"
+            title="15. Conclusion & Final Remarks"
+            icon={<CheckSquare size={18} className="text-emerald-600" />}
+            defaultOpen={false}
+          >
+            <p className="text-sm sm:text-base text-[#334155] leading-relaxed">
+              {paper.conclusion || "Not available in the uploaded paper."}
+            </p>
+            {paper.conclusionEvidence && (
+              <EvidenceBox evidence={paper.conclusionEvidence} title="Conclusion Evidence" />
+            )}
+          </CollapsibleSection>
+
+          {/* 16. Extracted References Summary */}
+          <CollapsibleSection
+            title="16. Extracted References Summary"
             icon={<Quote size={18} />}
             badge={<Badge variant="default" className="text-[10px] ml-auto">{paper.references?.length || 0} citations</Badge>}
             defaultOpen={false}
@@ -630,9 +734,9 @@ export default function PaperAnalysis() {
             </div>
           </CollapsibleSection>
 
-          {/* 16. Source Evidence */}
+          {/* 17. Source Evidence */}
           <CollapsibleSection
-            title="16. Source Evidence & Quotations"
+            title="17. Source Evidence & Quotations"
             icon={<ShieldAlert size={18} className="text-emerald-600" />}
             defaultOpen={false}
           >
@@ -640,13 +744,208 @@ export default function PaperAnalysis() {
               <p className="text-xs text-[#64748B]">
                 All structural analysis statements are grounded in verbatim quotes extracted from the uploaded document pages.
               </p>
-              {paper.evidenceProblem && <EvidenceBox evidence={paper.evidenceProblem} title="Problem Statement" />}
-              {paper.evidenceObjective && <EvidenceBox evidence={paper.evidenceObjective} title="Objectives" />}
-              {paper.evidenceMethodology && <EvidenceBox evidence={paper.evidenceMethodology} title="Methodology" />}
-              {paper.evidenceDataset && <EvidenceBox evidence={paper.evidenceDataset} title="Dataset" />}
-              {paper.evidenceResults && <EvidenceBox evidence={paper.evidenceResults} title="Results" />}
+              {(paper.evidenceProblem || paper.problemStatementEvidence) && <EvidenceBox evidence={paper.evidenceProblem || paper.problemStatementEvidence} title="Problem Statement" />}
+              {(paper.evidenceObjective || paper.objectivesEvidence) && <EvidenceBox evidence={paper.evidenceObjective || paper.objectivesEvidence} title="Objectives" />}
+              {(paper.evidenceMethodology || paper.methodologyEvidence || paper.proposedMethodEvidence) && <EvidenceBox evidence={paper.evidenceMethodology || paper.methodologyEvidence || paper.proposedMethodEvidence} title="Methodology" />}
+              {(paper.evidenceDataset || paper.datasetInfo?.evidence) && <EvidenceBox evidence={paper.evidenceDataset || paper.datasetInfo?.evidence} title="Dataset" />}
+              {(paper.evidenceResults || paper.resultsAndFindingsList?.[0]?.evidence) && <EvidenceBox evidence={paper.evidenceResults || paper.resultsAndFindingsList?.[0]?.evidence} title="Results" />}
+              {paper.conclusionEvidence && <EvidenceBox evidence={paper.conclusionEvidence} title="Conclusion" />}
             </div>
           </CollapsibleSection>
+        </div>
+      )}
+
+      {/* Tab: Full Paper Sections & Content */}
+      {activeTab === "sections" && (
+        <div className="space-y-4">
+          <Card className="p-5 sm:p-7 bg-white border-[#E6E9F8] space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3 border-b border-[#F1F5F9]">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="font-bold text-base sm:text-lg text-[#172554]">
+                    Full Paper Sections & Complete Text Content
+                  </h2>
+                  <Badge variant="indigo" className="text-xs">
+                    {paper.sections?.length || 0} Sections Extracted
+                  </Badge>
+                </div>
+                <p className="text-xs text-[#64748B] mt-0.5">
+                  Extracted section-by-section academic content parsed directly from the uploaded research PDF.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                <Button
+                  onClick={() => setContinuousReading(!continuousReading)}
+                  variant="outline"
+                  size="sm"
+                  className="text-xs font-semibold"
+                >
+                  <AlignLeft size={13} className="mr-1 text-[#5B4BDB]" />
+                  {continuousReading ? "Section Cards View" : "Continuous Reading View"}
+                </Button>
+                <Button
+                  onClick={handleCopyFullDoc}
+                  variant="secondary"
+                  size="sm"
+                  className="text-xs font-semibold"
+                >
+                  {copiedFullDoc ? <Check size={13} className="mr-1 text-emerald-600" /> : <Copy size={13} className="mr-1" />}
+                  {copiedFullDoc ? "All Sections Copied" : "Copy Full Paper Text"}
+                </Button>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div className="w-full sm:w-72">
+                <SearchBar
+                  value={sectionSearch}
+                  onChange={setSectionSearch}
+                  placeholder="Search inside paper sections..."
+                />
+              </div>
+              <span className="text-xs text-[#64748B]">
+                Total Document Length: ~{(paper.fullText || "").length.toLocaleString()} characters
+              </span>
+            </div>
+
+            {/* Displaying Sections */}
+            {(() => {
+              const allSections = paper.sections && paper.sections.length > 0 ? paper.sections : [];
+              const filtered = allSections.filter(
+                (s) =>
+                  s.title.toLowerCase().includes(sectionSearch.toLowerCase()) ||
+                  s.content.toLowerCase().includes(sectionSearch.toLowerCase())
+              );
+
+              if (allSections.length === 0) {
+                const fallbackContent = paper.fullText || paper.rawTextByPage?.map((p) => p.text).join("\n\n") || "";
+                if (fallbackContent.trim().length > 0) {
+                  return (
+                    <div className="bg-[#F8F7FF] rounded-2xl p-5 sm:p-6 border border-[#E6E9F8] space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-sm text-[#172554]">Full Extracted Text Stream</span>
+                        <Button
+                          onClick={() => handleCopyFullDoc()}
+                          variant="outline"
+                          size="xs"
+                        >
+                          <Copy size={12} className="mr-1" /> Copy
+                        </Button>
+                      </div>
+                      <p className="text-xs sm:text-sm text-[#334155] whitespace-pre-wrap leading-relaxed font-sans max-h-[700px] overflow-y-auto">
+                        {fallbackContent}
+                      </p>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="text-center py-10 space-y-2">
+                    <p className="text-sm font-semibold text-[#172554]">No Structured Sections Detected</p>
+                    <p className="text-xs text-[#64748B] max-w-md mx-auto">
+                      This paper might be image-based or lack standard headings. You can inspect raw page streams in the "Page-by-Page Raw Text" tab.
+                    </p>
+                  </div>
+                );
+              }
+
+              if (filtered.length === 0) {
+                return (
+                  <p className="text-xs text-[#64748B] text-center py-8">
+                    No sections matched your search query "{sectionSearch}".
+                  </p>
+                );
+              }
+
+              if (continuousReading) {
+                return (
+                  <div className="space-y-8 bg-[#F8F7FF] p-6 sm:p-8 rounded-3xl border border-[#E6E9F8] text-[#334155]">
+                    {filtered.map((sec) => (
+                      <article key={sec.id} className="space-y-3 pb-6 border-b border-[#E6E9F8] last:border-b-0">
+                        <div className="flex items-center justify-between gap-3">
+                          <h3 className="font-bold text-base sm:text-lg text-[#172554] tracking-tight">
+                            {sec.title}
+                          </h3>
+                          <div className="flex items-center gap-2">
+                            {sec.pageNumber && (
+                              <span className="text-[10px] font-semibold bg-[#EEF0FF] text-[#5B4BDB] px-2 py-0.5 rounded-md border border-[#DDD8FE]">
+                                Page {sec.pageNumber}
+                              </span>
+                            )}
+                            <button
+                              onClick={() => handleCopySection(sec.id, sec.content)}
+                              className="text-[11px] text-[#64748B] hover:text-[#5B4BDB] p-1 rounded transition-colors cursor-pointer"
+                              title="Copy section"
+                            >
+                              {copiedSectionId === sec.id ? <Check size={14} className="text-emerald-600" /> : <Copy size={14} />}
+                            </button>
+                          </div>
+                        </div>
+                        <div className="text-xs sm:text-sm leading-relaxed text-[#334155] whitespace-pre-wrap font-sans">
+                          {sec.content}
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                );
+              }
+
+              return (
+                <div className="space-y-4">
+                  {filtered.map((sec, idx) => {
+                    const wordCount = sec.content.split(/\s+/).filter(Boolean).length;
+                    return (
+                      <div
+                        key={sec.id || idx}
+                        className="bg-[#F8F7FF] rounded-2xl p-5 sm:p-6 border border-[#E6E9F8] space-y-3 hover:border-[#DDD8FE] transition-colors"
+                      >
+                        <div className="flex items-start justify-between gap-3 flex-wrap">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-xs font-mono font-bold text-[#5B4BDB] bg-[#EEF0FF] px-2 py-0.5 rounded-md border border-[#DDD8FE]">
+                              § {idx + 1}
+                            </span>
+                            <h3 className="text-sm sm:text-base font-bold text-[#172554]">
+                              {sec.title}
+                            </h3>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {sec.pageNumber && (
+                              <span className="text-[11px] font-medium text-[#64748B] bg-white px-2 py-0.5 rounded-md border border-[#E6E9F8]">
+                                Page {sec.pageNumber}
+                              </span>
+                            )}
+                            <span className="text-[11px] font-medium text-[#64748B] bg-white px-2 py-0.5 rounded-md border border-[#E6E9F8]">
+                              {wordCount} words
+                            </span>
+                            <button
+                              onClick={() => handleCopySection(sec.id, sec.content)}
+                              className="text-xs font-semibold text-[#5B4BDB] hover:bg-white px-2 py-0.5 rounded-md border border-transparent hover:border-[#DDD8FE] transition-all flex items-center gap-1 cursor-pointer"
+                              title="Copy Section Content"
+                            >
+                              {copiedSectionId === sec.id ? (
+                                <>
+                                  <Check size={12} className="text-emerald-600" /> Copied
+                                </>
+                              ) : (
+                                <>
+                                  <Copy size={12} /> Copy
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="bg-white rounded-xl p-4 sm:p-5 border border-[#E6E9F8] text-xs sm:text-sm text-[#334155] leading-relaxed whitespace-pre-wrap font-sans">
+                          {sec.content}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+          </Card>
         </div>
       )}
 

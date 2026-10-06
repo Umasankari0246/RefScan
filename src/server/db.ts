@@ -1,7 +1,8 @@
 /**
  * RefScan - Database Connection & Repository Manager
- * Connects to MongoDB Community Server (port 27017) using the official MongoClient driver.
- * Supports automatic reconnection, connection pooling, and seamless in-memory fallback.
+ * Connects directly to MongoDB Community Server (port 27017) or remote MongoDB Atlas URI.
+ * Strict persistence: In-memory fallback is disabled for production application data.
+ * If MongoDB is offline, operations throw DatabaseUnavailableError (HTTP 503).
  */
 
 import { MongoClient, Db, Collection } from "mongodb";
@@ -22,8 +23,8 @@ try {
 }
 
 export interface DbStatusInfo {
-  status: "connected" | "in-memory" | "disconnected";
-  mode: "mongodb" | "in-memory";
+  status: "connected" | "disconnected";
+  mode: "mongodb";
   uriConfigured: boolean;
   databaseName: string;
   host?: string;
@@ -31,14 +32,22 @@ export interface DbStatusInfo {
   error?: string;
 }
 
+export class DatabaseUnavailableError extends Error {
+  statusCode: number = 503;
+  constructor(message = "MongoDB Database service is unavailable. Persistent storage is offline.") {
+    super(message);
+    this.name = "DatabaseUnavailableError";
+  }
+}
+
 let client: MongoClient | null = null;
 let db: Db | null = null;
 
 let dbState: DbStatusInfo = {
-  status: "in-memory",
-  mode: "in-memory",
-  uriConfigured: false,
-  databaseName: "in-memory-store",
+  status: "disconnected",
+  mode: "mongodb",
+  uriConfigured: Boolean(process.env.MONGODB_URI),
+  databaseName: "refscan",
   timestamp: new Date().toISOString(),
 };
 
@@ -60,6 +69,7 @@ export async function initDB(): Promise<DbStatusInfo> {
       // Reconnect if dropped
       db = null;
       client = null;
+      dbState.status = "disconnected";
     }
   }
 
@@ -72,12 +82,12 @@ export async function initDB(): Promise<DbStatusInfo> {
     dbState.uriConfigured = Boolean(process.env.MONGODB_URI);
 
     try {
-      console.log(`[Database] Attempting connection to MongoDB at: ${mongoUri.replace(/:[^:@]+@/, ":****@")}`);
-      
+      console.log(`[Database] Connecting to MongoDB at: ${mongoUri.replace(/:[^:@]+@/, ":****@")}`);
+
       const newClient = new MongoClient(mongoUri, {
-        serverSelectionTimeoutMS: 4000,
-        connectTimeoutMS: 4000,
-        socketTimeoutMS: 10000,
+        serverSelectionTimeoutMS: 5000,
+        connectTimeoutMS: 5000,
+        socketTimeoutMS: 15000,
       });
 
       await newClient.connect();
@@ -92,10 +102,13 @@ export async function initDB(): Promise<DbStatusInfo> {
       // Verify connection with ping
       await db.command({ ping: 1 });
 
-      // Create collections if they do not exist, and set up indexes
+      // Create collections if they do not exist
       const collections = await db.listCollections().toArray();
       const colNames = collections.map((c) => c.name);
 
+      if (!colNames.includes("users")) {
+        await db.createCollection("users");
+      }
       if (!colNames.includes("references")) {
         await db.createCollection("references");
       }
@@ -105,21 +118,41 @@ export async function initDB(): Promise<DbStatusInfo> {
       if (!colNames.includes("citationPapers")) {
         await db.createCollection("citationPapers");
       }
-      if (!colNames.includes("users")) {
-        await db.createCollection("users");
+      if (!colNames.includes("notifications")) {
+        await db.createCollection("notifications");
       }
 
-      // Create indexes for efficient querying
-      try {
-        await db.collection("references").createIndex({ id: 1 }, { unique: true });
-        await db.collection("references").createIndex({ type: 1 });
-        await db.collection("references").createIndex({ title: "text", authors: "text" });
-        await db.collection("papers").createIndex({ id: 1 }, { unique: true });
-        await db.collection("citationPapers").createIndex({ id: 1 }, { unique: true });
-        await db.collection("users").createIndex({ email: 1 }, { unique: true, sparse: true });
-      } catch (idxErr) {
-        // Non-fatal if indexes already exist
-      }
+      // Create compound & unique indexes for multi-user isolation & performance
+      const safeCreateIndex = async (colName: string, spec: any, options?: any) => {
+        try {
+          await db!.collection(colName).createIndex(spec, options);
+        } catch (idxErr: any) {
+          // Ignore IndexOptionsConflict (85) or IndexKeySpecsConflict (86) when index already exists
+          if (idxErr?.code !== 85 && idxErr?.code !== 86) {
+            console.warn(`[Database] Index notice on ${colName}:`, idxErr?.message || idxErr);
+          }
+        }
+      };
+
+      await safeCreateIndex("users", { email: 1 }, { unique: true, sparse: true });
+      await safeCreateIndex("users", { id: 1 }, { unique: true });
+
+      // References: user scoped indexes
+      await safeCreateIndex("references", { userId: 1, id: 1 });
+      await safeCreateIndex("references", { userId: 1, type: 1 });
+      await safeCreateIndex("references", { userId: 1, dateAdded: -1 });
+      await safeCreateIndex("references", { title: "text", authors: "text" });
+
+      // Papers: user scoped
+      await safeCreateIndex("papers", { userId: 1, id: 1 });
+      await safeCreateIndex("papers", { userId: 1, dateAdded: -1 });
+
+      // Citation Papers: user scoped
+      await safeCreateIndex("citationPapers", { userId: 1, id: 1 });
+      await safeCreateIndex("citationPapers", { userId: 1, createdAt: -1 });
+
+      // Notifications: user scoped
+      await safeCreateIndex("notifications", { userId: 1, time: -1 });
 
       dbState = {
         status: "connected",
@@ -130,17 +163,17 @@ export async function initDB(): Promise<DbStatusInfo> {
         timestamp: new Date().toISOString(),
       };
 
-      console.log(`[Database] Successfully connected to MongoDB database "${dbName}"! Persistent storage active.`);
+      console.log(`[Database] Successfully connected to MongoDB database "${dbName}". Strict multi-user persistence active.`);
       return dbState;
     } catch (err: any) {
-      console.warn(`[Database] MongoDB connection error (${err.message}). Using in-memory fallback.`);
+      console.error(`[Database] CRITICAL: MongoDB connection failed (${err.message}). In-memory fallback is disabled.`);
       client = null;
       db = null;
       dbState = {
-        status: "in-memory",
-        mode: "in-memory",
+        status: "disconnected",
+        mode: "mongodb",
         uriConfigured: Boolean(process.env.MONGODB_URI),
-        databaseName: "in-memory-store",
+        databaseName: "refscan",
         timestamp: new Date().toISOString(),
         error: err.message,
       };
@@ -161,20 +194,28 @@ export function getDbStatus(): DbStatusInfo {
 }
 
 /**
- * Get connected MongoDB database instance (or null if in-memory mode)
+ * Get connected MongoDB database instance or throw 503
  */
-export function getDb(): Db | null {
+export function getDbOrThrow(): Db {
+  if (!db || dbState.status !== "connected") {
+    throw new DatabaseUnavailableError(
+      dbState.error 
+        ? `MongoDB is currently unreachable: ${dbState.error}`
+        : "MongoDB database service is disconnected. Persistent storage is required."
+    );
+  }
   return db;
 }
 
 /**
- * Safe collection accessor
+ * Safe collection accessor that throws DatabaseUnavailableError if DB is offline
  */
-export function getCollection<T = any>(name: "references" | "papers" | "citationPapers" | "users"): Collection<T> | null {
-  if (db && dbState.status === "connected") {
-    return db.collection<T>(name);
-  }
-  return null;
+export function getCollection<T extends import("mongodb").Document = any>(
+  name: "references" | "papers" | "citationPapers" | "users" | "notifications"
+): Collection<T> {
+  const database = getDbOrThrow();
+  return database.collection<T>(name);
 }
 
 export { referenceRepository, paperRepository, notificationRepository, citationPaperRepository } from "./models/Reference.ts";
+export { userRepository } from "./models/User.ts";

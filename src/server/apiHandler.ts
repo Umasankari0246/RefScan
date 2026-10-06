@@ -1,34 +1,65 @@
 /**
  * RefScan Backend API Handler
- * Comprehensive RESTful backend API for RefScan running via Vite middleware.
- * Supports MongoDB integration with seamless in-memory fallback.
+ * RESTful backend API for RefScan with real MongoDB persistence, JWT authentication,
+ * and strict multi-user data isolation.
+ *
  * Endpoints:
- * - GET  /api/health (System status & DB health)
- * - GET  /api/books/lookup?isbn= (Multi-source ISBN lookup)
- * - GET  /api/references (GET with search & filters)
- * - POST /api/references (Create new reference)
- * - GET  /api/references/:id (Get single reference)
- * - PUT  /api/references/:id (Update reference)
- * - DELETE /api/references/:id (Delete reference)
- * - GET  /api/papers (List papers)
- * - GET  /api/papers/:id (Get specific paper)
- * - POST /api/papers/upload (File ingestion & analysis)
- * - POST /api/citations/generate (IEEE, APA, MLA, Harvard formatter)
- * - POST /api/chat (Academic AI assistant endpoint)
- * - GET  /api/gaps (Research gaps collection)
- * - GET  /api/notifications (User notifications)
- * - POST /api/notifications/read-all (Mark notifications read)
+ * Public:
+ * - GET  /api/health (System & DB connection health)
+ * - GET  /api/books/lookup?isbn= (Public ISBN bibliographic lookup)
+ * - POST /api/citations/generate (Pure citation formatting utility)
+ *
+ * Authentication:
+ * - POST /api/auth/register (Register new MongoDB user, password hashed with bcryptjs)
+ * - POST /api/auth/login (Authenticate against MongoDB, returns JWT token)
+ * - GET  /api/auth/me (Get current authenticated user profile)
+ * - POST /api/auth/logout (Session termination)
+ *
+ * User Management (Admin Protected):
+ * - GET    /api/users (List all registered users from MongoDB)
+ * - GET    /api/users/:id (Get single user profile)
+ * - PUT    /api/users/:id (Update user profile/role)
+ * - DELETE /api/users/:id (Delete user and cascade delete user's data)
+ *
+ * Scoped User Workspace (Requires Bearer JWT, scoped by req.user.id):
+ * - GET    /api/references
+ * - POST   /api/references
+ * - GET    /api/references/:id
+ * - PUT    /api/references/:id
+ * - DELETE /api/references/:id
+ * - GET    /api/papers
+ * - GET    /api/papers/:id
+ * - POST   /api/papers/upload
+ * - GET    /api/citation-papers
+ * - POST   /api/citation-papers
+ * - GET    /api/citation-papers/:id
+ * - DELETE /api/citation-papers/:id
+ * - GET    /api/gaps
+ * - GET    /api/notifications
+ * - POST   /api/notifications/read-all
+ * - POST   /api/chat
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { URL } from "node:url";
 import { formatIsbn, cleanIsbnString, validateIsbn } from "../services/isbnService.ts";
 import { generateCitationHTML, generateCitationPlainText } from "../services/citationService.ts";
-import { BookReference, PaperReference, Reference, CitationStyle, CitationPaper } from "../types/index.ts";
-import { initDB, getDbStatus, referenceRepository, paperRepository, notificationRepository, citationPaperRepository } from "./db.ts";
+import { sendChatMessage } from "../services/chatbotService.ts";
+import { BookReference, PaperReference, CitationStyle, SafeUser } from "../types/index.ts";
+import {
+  initDB,
+  getDbStatus,
+  DatabaseUnavailableError,
+  referenceRepository,
+  paperRepository,
+  notificationRepository,
+  citationPaperRepository,
+  userRepository,
+} from "./db.ts";
+import { verifyToken } from "./models/User.ts";
 
-// Ensure DB is initialized
-initDB().catch((err) => console.warn("[DB Init]", err));
+// Initialize DB on server startup
+initDB().catch((err) => console.warn("[DB Init Startup]", err.message));
 
 /**
  * Helper to parse JSON request body
@@ -64,6 +95,45 @@ function sendJson(res: ServerResponse, statusCode: number, data: any) {
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
   res.end(JSON.stringify(data, null, 2));
+}
+
+/**
+ * Extract authenticated user from Authorization: Bearer <token>
+ */
+async function getAuthenticatedUser(req: IncomingMessage): Promise<SafeUser | null> {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return null;
+  }
+
+  const token = authHeader.substring(7).trim();
+  if (!token) return null;
+
+  const payload = verifyToken(token);
+  if (!payload || !payload.id) return null;
+
+  try {
+    const user = await userRepository.findById(payload.id);
+    return user;
+  } catch (err) {
+    console.warn("[Auth Middleware] Could not fetch user from DB:", err);
+    return null;
+  }
+}
+
+/**
+ * Require valid authenticated user or send 401 Unauthorized
+ */
+async function requireAuth(req: IncomingMessage, res: ServerResponse): Promise<SafeUser | null> {
+  const user = await getAuthenticatedUser(req);
+  if (!user) {
+    sendJson(res, 401, {
+      error: "Unauthorized",
+      message: "A valid Bearer authentication token is required to access this resource.",
+    });
+    return null;
+  }
+  return user;
 }
 
 /**
@@ -193,7 +263,12 @@ async function lookupIsbnMetadata(isbn: string): Promise<BookReference> {
  */
 export async function handleApiRequest(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
   const urlObj = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
-  const pathname = urlObj.pathname;
+  let pathname = urlObj.pathname;
+
+  // Seamlessly normalize duplicate /api/api/ if sent by client
+  if (pathname.startsWith("/api/api/")) {
+    pathname = pathname.replace(/^\/api\/api\//, "/api/");
+  }
 
   // Only handle /api routes
   if (!pathname.startsWith("/api")) {
@@ -207,60 +282,49 @@ export async function handleApiRequest(req: IncomingMessage, res: ServerResponse
   }
 
   try {
-    // Ensure DB connection is established before routing any request
+    // Ensure DB connection is initialized
     const dbStatus = await initDB();
 
-    // 1. Health & Server Info
+    // ──────────────────────────────────────────────────────────────────────────
+    // 1. PUBLIC: Health & Server Info
+    // ──────────────────────────────────────────────────────────────────────────
     if (pathname === "/api/health" || pathname === "/api") {
-      const count = await referenceRepository.count();
-      const papersCount = (await paperRepository.findAll()).length;
-      const citationsCount = (await citationPaperRepository.findAll()).length;
+      let usersCount = 0;
+      if (dbStatus.status === "connected") {
+        try {
+          usersCount = await userRepository.count();
+        } catch {
+          // Non fatal
+        }
+      }
 
       sendJson(res, 200, {
-        status: "online",
+        status: dbStatus.status === "connected" ? "online" : "degraded",
         service: "RefScan Academic Reference & Research Backend API",
-        version: "2.6.0",
+        version: "3.0.0",
         timestamp: new Date().toISOString(),
         database: {
           mode: dbStatus.mode,
           status: dbStatus.status,
           uriConfigured: dbStatus.uriConfigured,
-          databaseName: dbStatus.databaseName || "in-memory-store",
-          host: dbStatus.host || "127.0.0.1:27017",
+          databaseName: dbStatus.databaseName,
+          host: dbStatus.host,
           error: dbStatus.error,
-          collections: {
-            references: count,
-            papers: papersCount,
-            citationPapers: citationsCount,
-          },
+          registeredUsers: usersCount,
         },
-        endpoints: [
-          "GET /api/health",
-          "GET /api/books/lookup?isbn=:isbn",
-          "GET /api/references",
-          "POST /api/references",
-          "GET /api/references/:id",
-          "PUT /api/references/:id",
-          "DELETE /api/references/:id",
-          "GET /api/papers",
-          "GET /api/papers/:id",
-          "POST /api/papers/upload",
-          "GET /api/citation-papers",
-          "POST /api/citation-papers",
-          "GET /api/citation-papers/:id",
-          "DELETE /api/citation-papers/:id",
-          "POST /api/citations/generate",
-          "POST /api/chat",
-          "GET /api/gaps",
-          "GET /api/notifications",
-          "POST /api/notifications/read-all",
-        ],
-        libraryCount: count,
+        security: {
+          multiUserIsolation: true,
+          passwordHashing: "bcryptjs",
+          sessionAuth: "JWT Bearer",
+          inMemoryFallback: false,
+        },
       });
       return true;
     }
 
-    // 2. Books ISBN Lookup
+    // ──────────────────────────────────────────────────────────────────────────
+    // 2. PUBLIC: Books ISBN Lookup
+    // ──────────────────────────────────────────────────────────────────────────
     if (pathname === "/api/books/lookup" && req.method === "GET") {
       const isbnParam = urlObj.searchParams.get("isbn");
       if (!isbnParam) {
@@ -280,13 +344,236 @@ export async function handleApiRequest(req: IncomingMessage, res: ServerResponse
       return true;
     }
 
-    // 3. References Collection (GET, POST)
+    // ──────────────────────────────────────────────────────────────────────────
+    // 3. PUBLIC: Citation Generation Utility
+    // ──────────────────────────────────────────────────────────────────────────
+    if (pathname === "/api/citations/generate" && req.method === "POST") {
+      const payload = await parseJsonBody(req);
+      const { reference, style = "IEEE" } = payload;
+      if (!reference) {
+        sendJson(res, 400, { error: "Reference object is required." });
+        return true;
+      }
+      const html = generateCitationHTML(reference, style as CitationStyle);
+      const plainText = generateCitationPlainText(reference, style as CitationStyle);
+      sendJson(res, 200, { success: true, style, html, plainText });
+      return true;
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // 4. AUTHENTICATION ENDPOINTS
+    // ──────────────────────────────────────────────────────────────────────────
+
+    // POST /api/auth/register
+    if (pathname === "/api/auth/register" && req.method === "POST") {
+      const body = await parseJsonBody(req);
+      const { name, email, password, title, institution, role } = body;
+
+      if (!name || typeof name !== "string" || !name.trim()) {
+        sendJson(res, 400, { error: "Validation Error", message: "Full name is required." });
+        return true;
+      }
+      if (!email || typeof email !== "string" || !email.includes("@") || !email.includes(".")) {
+        sendJson(res, 400, { error: "Validation Error", message: "A valid email address is required." });
+        return true;
+      }
+      if (!password || typeof password !== "string" || password.length < 6) {
+        sendJson(res, 400, { error: "Validation Error", message: "Password must be at least 6 characters long." });
+        return true;
+      }
+
+      try {
+        const { user, token } = await userRepository.create({
+          name,
+          email,
+          password,
+          title,
+          institution,
+          role,
+        });
+
+        // Create a welcome notification for this newly registered user in MongoDB
+        try {
+          await notificationRepository.create(
+            {
+              title: "Welcome to RefScan!",
+              message: `Your academic workspace is set up and protected with multi-user isolation.`,
+              time: "Just now",
+              read: false,
+              type: "success",
+            },
+            user.id
+          );
+        } catch {
+          // Non-fatal
+        }
+
+        sendJson(res, 201, {
+          success: true,
+          message: "Registration successful. Welcome to RefScan!",
+          user,
+          token,
+        });
+      } catch (err: any) {
+        const statusCode = err.message.includes("already exists") ? 409 : 400;
+        sendJson(res, statusCode, { error: "Registration Failed", message: err.message });
+      }
+      return true;
+    }
+
+    // POST /api/auth/login
+    if (pathname === "/api/auth/login" && req.method === "POST") {
+      const body = await parseJsonBody(req);
+      const { email, password } = body;
+
+      if (!email || !password) {
+        sendJson(res, 400, { error: "Validation Error", message: "Email and password are required." });
+        return true;
+      }
+
+      try {
+        const { user, token } = await userRepository.authenticate(email, password);
+        sendJson(res, 200, {
+          success: true,
+          message: "Authentication successful.",
+          user,
+          token,
+        });
+      } catch (err: any) {
+        sendJson(res, 401, { error: "Authentication Failed", message: err.message || "Invalid credentials." });
+      }
+      return true;
+    }
+
+    // GET /api/auth/me
+    if (pathname === "/api/auth/me" && req.method === "GET") {
+      const authUser = await requireAuth(req, res);
+      if (!authUser) return true;
+
+      sendJson(res, 200, {
+        success: true,
+        user: authUser,
+      });
+      return true;
+    }
+
+    // POST /api/auth/logout
+    if (pathname === "/api/auth/logout" && req.method === "POST") {
+      sendJson(res, 200, {
+        success: true,
+        message: "Session terminated successfully.",
+      });
+      return true;
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // 5. USER MANAGEMENT ENDPOINTS (Admin Protected)
+    // ──────────────────────────────────────────────────────────────────────────
+
+    // GET /api/users - ADMIN ONLY
+    if (pathname === "/api/users" && req.method === "GET") {
+      const authUser = await requireAuth(req, res);
+      if (!authUser) return true;
+
+      // Restrict full directory view to administrators
+      if (authUser.role !== "admin") {
+        sendJson(res, 403, {
+          error: "Forbidden",
+          message: "Access restricted. Administrator privileges are required to view the Users directory.",
+        });
+        return true;
+      }
+
+      const q = urlObj.searchParams.get("q") || undefined;
+      const users = await userRepository.findAll(q);
+      sendJson(res, 200, {
+        success: true,
+        count: users.length,
+        users,
+      });
+      return true;
+    }
+
+    // Single User CRUD: /api/users/:id
+    const userMatch = pathname.match(/^\/api\/users\/([^/]+)$/);
+    if (userMatch) {
+      const targetUserId = userMatch[1];
+      const authUser = await requireAuth(req, res);
+      if (!authUser) return true;
+
+      // GET /api/users/:id
+      if (req.method === "GET") {
+        if (authUser.role !== "admin" && authUser.id !== targetUserId) {
+          sendJson(res, 403, { error: "Forbidden", message: "You can only view your own user profile." });
+          return true;
+        }
+
+        const found = await userRepository.findById(targetUserId);
+        if (!found) {
+          sendJson(res, 404, { error: "Not Found", message: `User "${targetUserId}" not found.` });
+          return true;
+        }
+        sendJson(res, 200, { success: true, user: found });
+        return true;
+      }
+
+      // PUT /api/users/:id
+      if (req.method === "PUT") {
+        if (authUser.role !== "admin" && authUser.id !== targetUserId) {
+          sendJson(res, 403, { error: "Forbidden", message: "You can only edit your own user profile." });
+          return true;
+        }
+
+        const updateData = await parseJsonBody(req);
+        // Non-admins cannot promote themselves or alter roles
+        if (authUser.role !== "admin" && updateData.role) {
+          delete updateData.role;
+        }
+
+        const updated = await userRepository.update(targetUserId, updateData);
+        if (!updated) {
+          sendJson(res, 404, { error: "Not Found", message: `User "${targetUserId}" not found.` });
+          return true;
+        }
+        sendJson(res, 200, { success: true, user: updated });
+        return true;
+      }
+
+      // DELETE /api/users/:id (Admin only)
+      if (req.method === "DELETE") {
+        if (authUser.role !== "admin") {
+          sendJson(res, 403, { error: "Forbidden", message: "Only administrators can delete user accounts." });
+          return true;
+        }
+
+        // Prevent self-deletion if current admin
+        if (authUser.id === targetUserId) {
+          sendJson(res, 400, { error: "Bad Request", message: "Administrators cannot delete their own active account." });
+          return true;
+        }
+
+        const deleted = await userRepository.delete(targetUserId);
+        if (!deleted) {
+          sendJson(res, 404, { error: "Not Found", message: `User "${targetUserId}" not found.` });
+          return true;
+        }
+        sendJson(res, 200, { success: true, message: `User account "${targetUserId}" deleted.` });
+        return true;
+      }
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // 6. SCOPED REFERENCES COLLECTION (Strictly req.user.id)
+    // ──────────────────────────────────────────────────────────────────────────
     if (pathname === "/api/references") {
+      const authUser = await requireAuth(req, res);
+      if (!authUser) return true;
+
       if (req.method === "GET") {
         const type = urlObj.searchParams.get("type") || undefined;
         const q = urlObj.searchParams.get("q") || undefined;
 
-        const results = await referenceRepository.findAll({ type, query: q });
+        const results = await referenceRepository.findAll(authUser.id, { type, query: q });
         sendJson(res, 200, { success: true, count: results.length, data: results });
         return true;
       }
@@ -298,30 +585,36 @@ export async function handleApiRequest(req: IncomingMessage, res: ServerResponse
           return true;
         }
 
-        const savedRef = await referenceRepository.create(newRef);
+        const savedRef = await referenceRepository.create(newRef, authUser.id);
 
-        // Add notification
-        await notificationRepository.create({
-          title: "Reference Saved to Backend",
-          message: `"${savedRef.title}" is securely saved on the RefScan server.`,
-          time: "Just now",
-          read: false,
-          type: "success",
-        });
+        // Add user-scoped notification
+        await notificationRepository.create(
+          {
+            title: "Reference Saved to Workspace",
+            message: `"${savedRef.title}" has been saved in your private library.`,
+            time: "Just now",
+            read: false,
+            type: "success",
+          },
+          authUser.id
+        );
 
         sendJson(res, 201, { success: true, reference: savedRef });
         return true;
       }
     }
 
-    // 4. Single Reference Operations (GET, PUT, DELETE)
+    // Single Reference: /api/references/:id (Strictly req.user.id)
     const refMatch = pathname.match(/^\/api\/references\/([^/]+)$/);
     if (refMatch) {
       const refId = refMatch[1];
+      const authUser = await requireAuth(req, res);
+      if (!authUser) return true;
+
       if (req.method === "GET") {
-        const ref = await referenceRepository.findById(refId);
+        const ref = await referenceRepository.findById(refId, authUser.id);
         if (!ref) {
-          sendJson(res, 404, { error: `Reference with ID "${refId}" not found.` });
+          sendJson(res, 404, { error: `Reference with ID "${refId}" not found in your workspace.` });
           return true;
         }
         sendJson(res, 200, { success: true, data: ref });
@@ -330,50 +623,61 @@ export async function handleApiRequest(req: IncomingMessage, res: ServerResponse
 
       if (req.method === "PUT") {
         const updateData = await parseJsonBody(req);
-        const updated = await referenceRepository.update(refId, updateData);
+        const updated = await referenceRepository.update(refId, updateData, authUser.id);
         if (updated) {
           sendJson(res, 200, { success: true, reference: updated });
         } else {
-          sendJson(res, 404, { error: `Reference with ID "${refId}" not found.` });
+          sendJson(res, 404, { error: `Reference with ID "${refId}" not found in your workspace.` });
         }
         return true;
       }
 
       if (req.method === "DELETE") {
-        const deleted = await referenceRepository.delete(refId);
+        const deleted = await referenceRepository.delete(refId, authUser.id);
         if (deleted) {
-          sendJson(res, 200, { success: true, message: `Reference "${refId}" deleted.` });
+          sendJson(res, 200, { success: true, message: `Reference "${refId}" deleted from your workspace.` });
         } else {
-          sendJson(res, 404, { error: `Reference with ID "${refId}" not found.` });
+          sendJson(res, 404, { error: `Reference with ID "${refId}" not found in your workspace.` });
         }
         return true;
       }
     }
 
-    // 5. Research Papers Collection (GET)
+    // ──────────────────────────────────────────────────────────────────────────
+    // 7. SCOPED RESEARCH PAPERS COLLECTION (Strictly req.user.id)
+    // ──────────────────────────────────────────────────────────────────────────
     if (pathname === "/api/papers") {
+      const authUser = await requireAuth(req, res);
+      if (!authUser) return true;
+
       if (req.method === "GET") {
-        const papers = await paperRepository.findAll();
+        const papers = await paperRepository.findAll(authUser.id);
         sendJson(res, 200, { success: true, count: papers.length, data: papers });
         return true;
       }
     }
 
-    // 6. Single Paper (GET)
+    // Single Paper: /api/papers/:id (Strictly req.user.id)
     const paperMatch = pathname.match(/^\/api\/papers\/([^/]+)$/);
     if (paperMatch && req.method === "GET") {
       const paperId = paperMatch[1];
-      const paper = await paperRepository.findById(paperId);
+      const authUser = await requireAuth(req, res);
+      if (!authUser) return true;
+
+      const paper = await paperRepository.findById(paperId, authUser.id);
       if (!paper) {
-        sendJson(res, 404, { error: `Research paper with ID "${paperId}" not found.` });
+        sendJson(res, 404, { error: `Research paper with ID "${paperId}" not found in your workspace.` });
         return true;
       }
       sendJson(res, 200, { success: true, data: paper });
       return true;
     }
 
-    // 7. Paper Upload & Processing
+    // Paper Upload: /api/papers/upload (Strictly req.user.id)
     if (pathname === "/api/papers/upload" && req.method === "POST") {
+      const authUser = await requireAuth(req, res);
+      if (!authUser) return true;
+
       const payload = await parseJsonBody(req);
       const isCompletePaper = payload.type === "PAPER" && payload.title;
 
@@ -382,6 +686,7 @@ export async function handleApiRequest(req: IncomingMessage, res: ServerResponse
         newPaper = {
           ...payload,
           id: payload.id || "p_" + Date.now(),
+          userId: authUser.id,
           saved: true,
           dateAdded: payload.dateAdded || new Date().toISOString().split("T")[0],
           analysisStatus: payload.analysisStatus || "complete",
@@ -393,6 +698,7 @@ export async function handleApiRequest(req: IncomingMessage, res: ServerResponse
 
         newPaper = {
           id: "p_" + Date.now(),
+          userId: authUser.id,
           type: "PAPER",
           title: title,
           authors: ["Author not specified in upload request"],
@@ -410,21 +716,26 @@ export async function handleApiRequest(req: IncomingMessage, res: ServerResponse
         };
       }
 
-      const savedPaper = (await referenceRepository.create(newPaper)) as PaperReference;
+      const savedPaper = (await referenceRepository.create(newPaper, authUser.id)) as PaperReference;
       sendJson(res, 201, { success: true, paper: savedPaper });
       return true;
     }
 
-    // 8. Citation Papers Endpoints (GET, POST, DELETE)
+    // ──────────────────────────────────────────────────────────────────────────
+    // 8. SCOPED CITATION PAPERS (Strictly req.user.id)
+    // ──────────────────────────────────────────────────────────────────────────
     if (pathname === "/api/citation-papers") {
+      const authUser = await requireAuth(req, res);
+      if (!authUser) return true;
+
       if (req.method === "GET") {
-        const papers = await citationPaperRepository.findAll();
+        const papers = await citationPaperRepository.findAll(authUser.id);
         sendJson(res, 200, { success: true, count: papers.length, data: papers });
         return true;
       }
       if (req.method === "POST") {
         const newPaper = await parseJsonBody(req);
-        const saved = await citationPaperRepository.create(newPaper);
+        const saved = await citationPaperRepository.create(newPaper, authUser.id);
         sendJson(res, 201, { success: true, citationPaper: saved });
         return true;
       }
@@ -433,51 +744,49 @@ export async function handleApiRequest(req: IncomingMessage, res: ServerResponse
     const citationPaperMatch = pathname.match(/^\/api\/citation-papers\/([^/]+)$/);
     if (citationPaperMatch) {
       const cpId = citationPaperMatch[1];
+      const authUser = await requireAuth(req, res);
+      if (!authUser) return true;
+
       if (req.method === "GET") {
-        const found = await citationPaperRepository.findById(cpId);
+        const found = await citationPaperRepository.findById(cpId, authUser.id);
         if (!found) {
-          sendJson(res, 404, { error: `Citation paper "${cpId}" not found.` });
+          sendJson(res, 404, { error: `Citation paper "${cpId}" not found in your workspace.` });
           return true;
         }
         sendJson(res, 200, { success: true, data: found });
         return true;
       }
       if (req.method === "DELETE") {
-        const deleted = await citationPaperRepository.delete(cpId);
+        const deleted = await citationPaperRepository.delete(cpId, authUser.id);
         sendJson(res, 200, { success: true, deleted });
         return true;
       }
     }
 
-    // 9. Citation Generation Endpoint
-    if (pathname === "/api/citations/generate" && req.method === "POST") {
-      const payload = await parseJsonBody(req);
-      const { reference, style = "IEEE" } = payload;
-      if (!reference) {
-        sendJson(res, 400, { error: "Reference object is required." });
-        return true;
-      }
-      const html = generateCitationHTML(reference, style as CitationStyle);
-      const plainText = generateCitationPlainText(reference, style as CitationStyle);
-      sendJson(res, 200, { success: true, style, html, plainText });
-      return true;
-    }
-
-    // 9. Academic AI Chatbot Endpoint
+    // ──────────────────────────────────────────────────────────────────────────
+    // 9. SCOPED ACADEMIC AI CHATBOT (Strictly req.user.id)
+    // ──────────────────────────────────────────────────────────────────────────
     if (pathname === "/api/chat" && req.method === "POST") {
+      const authUser = await requireAuth(req, res);
+      if (!authUser) return true;
+
       const payload = await parseJsonBody(req);
-      const allRefs = await referenceRepository.findAll();
-      const { message, activeBook, activePaper, references = allRefs } = payload;
+      // Ensure chatbot only accesses the authenticated user's isolated references
+      const userRefs = await referenceRepository.findAll(authUser.id);
+      const { message, activeBook, activePaper, references = userRefs } = payload;
       if (!message) {
         sendJson(res, 400, { error: "Message prompt is required." });
         return true;
       }
 
+      // Filter context references so they must belong to this user
+      const userSafeReferences = references.filter((r: any) => !r.userId || r.userId === authUser.id);
+
       const chatReply = await sendChatMessage(message, {
         currentPath: "/api/chat",
         activeBook,
         activePaper,
-        references,
+        references: userSafeReferences,
       });
 
       sendJson(res, 200, {
@@ -489,30 +798,43 @@ export async function handleApiRequest(req: IncomingMessage, res: ServerResponse
       return true;
     }
 
-    // 10. Research Gaps Endpoint
+    // ──────────────────────────────────────────────────────────────────────────
+    // 10. SCOPED RESEARCH GAPS (Strictly req.user.id)
+    // ──────────────────────────────────────────────────────────────────────────
     if (pathname === "/api/gaps" && req.method === "GET") {
-      const gaps = await paperRepository.getResearchGaps();
+      const authUser = await requireAuth(req, res);
+      if (!authUser) return true;
+
+      const gaps = await paperRepository.getResearchGaps(authUser.id);
       sendJson(res, 200, { success: true, count: gaps.length, data: gaps });
       return true;
     }
 
-    // 11. Notifications Endpoints
+    // ──────────────────────────────────────────────────────────────────────────
+    // 11. SCOPED NOTIFICATIONS (Strictly req.user.id)
+    // ──────────────────────────────────────────────────────────────────────────
     if (pathname === "/api/notifications") {
+      const authUser = await requireAuth(req, res);
+      if (!authUser) return true;
+
       if (req.method === "GET") {
-        const notifs = await notificationRepository.findAll();
+        const notifs = await notificationRepository.findAll(authUser.id);
         sendJson(res, 200, { success: true, count: notifs.length, data: notifs });
         return true;
       }
       if (req.method === "POST") {
         const newNotif = await parseJsonBody(req);
-        const created = await notificationRepository.create(newNotif);
+        const created = await notificationRepository.create(newNotif, authUser.id);
         sendJson(res, 201, { success: true, notification: created });
         return true;
       }
     }
 
     if (pathname === "/api/notifications/read-all" && req.method === "POST") {
-      await notificationRepository.markAllRead();
+      const authUser = await requireAuth(req, res);
+      if (!authUser) return true;
+
+      await notificationRepository.markAllRead(authUser.id);
       sendJson(res, 200, { success: true, message: "All notifications marked as read." });
       return true;
     }
@@ -522,6 +844,17 @@ export async function handleApiRequest(req: IncomingMessage, res: ServerResponse
     return true;
   } catch (error: any) {
     console.error("[RefScan Backend API Error]:", error);
+
+    // If MongoDB is offline, return 503 Service Unavailable explicitly
+    if (error instanceof DatabaseUnavailableError || error.statusCode === 503 || error.name === "DatabaseUnavailableError") {
+      sendJson(res, 503, {
+        error: "Database Service Unavailable",
+        message: error.message || "The MongoDB database service is currently offline. In-memory fallback is disabled for data integrity.",
+        retryAfterSeconds: 5,
+      });
+      return true;
+    }
+
     sendJson(res, 500, { error: "Internal Server Error", message: error.message });
     return true;
   }

@@ -1,23 +1,76 @@
 /**
  * RefScan - Database Reference Models & Repositories
- * Provides dual-mode (MongoDB + In-Memory Fallback) repositories for Reference, Paper,
- * CitationPaper, and User documents.
+ * Strictly multi-user isolated repositories backed by MongoDB.
+ * Every query, creation, update, and deletion is scoped strictly by userId.
+ * In-memory fallback is disabled; offline database throws DatabaseUnavailableError.
  */
 
-import { Reference, BookReference, PaperReference, WebsiteReference, ResearchGap, Notification, CitationPaper } from "../../types/index.ts";
+import { Reference, PaperReference, ResearchGap, Notification, CitationPaper } from "../../types/index.ts";
 import { getCollection } from "../db.ts";
 
-// Fallback in-memory arrays when MongoDB is disconnected
-let inMemoryReferences: Reference[] = [];
-let inMemoryNotifications: Notification[] = [];
-let inMemoryCitationPapers: CitationPaper[] = [];
-
 /**
- * Remove MongoDB internal _id from returned objects to match TypeScript domain models
+ * Remove MongoDB internal _id from returned objects and normalize array fields
+ * so both legacy and structured PDF extraction fields are always present.
  */
 function cleanDoc<T>(doc: any): T {
   if (!doc) return doc;
   const { _id, ...rest } = doc;
+
+  if (rest.type === "PAPER") {
+    const rawGaps = Array.isArray(rest.researchGaps) && rest.researchGaps.length > 0
+      ? rest.researchGaps
+      : Array.isArray(rest.researchGapsList)
+        ? rest.researchGapsList
+        : [];
+    const normalizedGaps = rawGaps.map((g: any, idx: number) => ({
+      ...g,
+      id: g.id || `${rest.id || "paper"}_gap_${idx + 1}`,
+      strength: (g.strength === "strong" || g.strength === "moderate" || g.strength === "emerging") ? g.strength : "moderate",
+      type: (g.type === "limitation" || g.type === "unexplored" || g.type === "improvement" || g.type === "novelty") ? g.type : "unexplored",
+    }));
+
+    return {
+      ...rest,
+      authors: Array.isArray(rest.authors) && rest.authors.length > 0 ? rest.authors : ["Unknown Author"],
+      keywords: Array.isArray(rest.keywords) ? rest.keywords : [],
+      technologies: Array.isArray(rest.technologies) && rest.technologies.length > 0
+        ? rest.technologies
+        : Array.isArray(rest.toolsAndTechList) ? rest.toolsAndTechList : [],
+      algorithms: Array.isArray(rest.algorithms) && rest.algorithms.length > 0
+        ? rest.algorithms
+        : Array.isArray(rest.algorithmsList) ? rest.algorithmsList : [],
+      datasets: Array.isArray(rest.datasets) && rest.datasets.length > 0
+        ? rest.datasets
+        : Array.isArray(rest.datasetsUsedList) ? rest.datasetsUsedList : [],
+      keyFindings: Array.isArray(rest.keyFindings) && rest.keyFindings.length > 0
+        ? rest.keyFindings
+        : Array.isArray(rest.resultsAndFindingsList) ? rest.resultsAndFindingsList : [],
+      limitations: Array.isArray(rest.limitations) && rest.limitations.length > 0
+        ? rest.limitations
+        : Array.isArray(rest.limitationsList) ? rest.limitationsList : [],
+      futureScope: Array.isArray(rest.futureScope) && rest.futureScope.length > 0
+        ? rest.futureScope
+        : Array.isArray(rest.futureScopeList) ? rest.futureScopeList : [],
+      researchGaps: normalizedGaps,
+      researchGapsList: normalizedGaps,
+      researchProblem: rest.researchProblem || rest.problemStatement || "",
+      researchObjective: rest.researchObjective || rest.objectivesList?.[0] || "",
+      methodology: rest.methodology || rest.proposedMethod || "",
+      existingMethod: rest.existingMethod || rest.existingApproach || "",
+      references: Array.isArray(rest.references) ? rest.references : Array.isArray(rest.extractedReferences) ? rest.extractedReferences : [],
+      sections: Array.isArray(rest.sections) ? rest.sections : [],
+      fullText: typeof rest.fullText === "string" ? rest.fullText : "",
+      rawTextByPage: Array.isArray(rest.rawTextByPage) ? rest.rawTextByPage : [],
+    } as T;
+  }
+
+  if (rest.type === "BOOK") {
+    return {
+      ...rest,
+      authors: Array.isArray(rest.authors) && rest.authors.length > 0 ? rest.authors : ["Unknown Author"],
+    } as T;
+  }
+
   return rest as T;
 }
 
@@ -31,315 +84,194 @@ export interface ReferenceQueryOptions {
 }
 
 /**
- * Reference Repository (Books, Papers, Websites)
+ * Reference Repository (Books, Papers, Websites) - Scoped to Authenticated User
  */
 export const referenceRepository = {
-  async findAll(options?: ReferenceQueryOptions): Promise<Reference[]> {
+  async findAll(userId: string, options?: ReferenceQueryOptions): Promise<Reference[]> {
+    if (!userId) throw new Error("Authenticated userId is required to query references.");
     const col = getCollection<Reference>("references");
 
-    if (col) {
-      try {
-        const filter: any = {};
-
-        if (options?.type && options.type !== "ALL") {
-          filter.type = options.type;
-        }
-
-        if (options?.query && options.query.trim()) {
-          const q = options.query.trim();
-          filter.$or = [
-            { title: { $regex: q, $options: "i" } },
-            { authors: { $regex: q, $options: "i" } },
-            { isbn10: { $regex: q, $options: "i" } },
-            { isbn13: { $regex: q, $options: "i" } },
-            { doi: { $regex: q, $options: "i" } },
-            { publisher: { $regex: q, $options: "i" } },
-            { journal: { $regex: q, $options: "i" } },
-          ];
-        }
-
-        let cursor = col.find(filter);
-
-        if (options?.sortBy) {
-          cursor = cursor.sort({ [options.sortBy]: options.sortOrder === "asc" ? 1 : -1 });
-        } else {
-          cursor = cursor.sort({ dateAdded: -1 });
-        }
-
-        if (options?.skip) {
-          cursor = cursor.skip(options.skip);
-        }
-
-        if (options?.limit) {
-          cursor = cursor.limit(options.limit);
-        }
-
-        const docs = await cursor.toArray();
-        return docs.map(cleanDoc);
-      } catch (err) {
-        console.warn("[ReferenceRepository] MongoDB find error, falling back to in-memory:", err);
-      }
-    }
-
-    // In-memory fallback
-    let results = [...inMemoryReferences];
+    const filter: any = { userId };
 
     if (options?.type && options.type !== "ALL") {
-      results = results.filter((r) => r.type === options.type);
+      filter.type = options.type;
     }
 
     if (options?.query && options.query.trim()) {
-      const q = options.query.toLowerCase().trim();
-      results = results.filter((r) => {
-        const titleMatch = r.title?.toLowerCase().includes(q);
-        const authorsMatch = (r as any).authors?.some((a: string) => a.toLowerCase().includes(q));
-        const isbnMatch = (r as any).isbn10?.includes(q) || (r as any).isbn13?.replace(/-/g, "").includes(q.replace(/-/g, ""));
-        const doiMatch = (r as any).doi?.toLowerCase().includes(q);
-        return titleMatch || authorsMatch || isbnMatch || doiMatch;
-      });
+      const q = options.query.trim();
+      filter.$or = [
+        { title: { $regex: q, $options: "i" } },
+        { authors: { $regex: q, $options: "i" } },
+        { isbn10: { $regex: q, $options: "i" } },
+        { isbn13: { $regex: q, $options: "i" } },
+        { doi: { $regex: q, $options: "i" } },
+        { publisher: { $regex: q, $options: "i" } },
+        { journal: { $regex: q, $options: "i" } },
+      ];
     }
+
+    let cursor = col.find(filter);
 
     if (options?.sortBy) {
-      results.sort((a: any, b: any) => {
-        const valA = a[options.sortBy!] || "";
-        const valB = b[options.sortBy!] || "";
-        if (options.sortOrder === "asc") return valA > valB ? 1 : -1;
-        return valA < valB ? 1 : -1;
-      });
+      cursor = cursor.sort({ [options.sortBy]: options.sortOrder === "asc" ? 1 : -1 });
+    } else {
+      cursor = cursor.sort({ dateAdded: -1 });
     }
 
-    if (options?.skip) results = results.slice(options.skip);
-    if (options?.limit) results = results.slice(0, options.limit);
+    if (options?.skip) {
+      cursor = cursor.skip(options.skip);
+    }
 
-    return results;
+    if (options?.limit) {
+      cursor = cursor.limit(options.limit);
+    }
+
+    const docs = await cursor.toArray();
+    return docs.map(cleanDoc);
   },
 
-  async findById(id: string): Promise<Reference | null> {
+  async findById(id: string, userId: string): Promise<Reference | null> {
+    if (!userId) throw new Error("Authenticated userId is required to query reference.");
     const col = getCollection<Reference>("references");
-    if (col) {
-      try {
-        const doc = await col.findOne({ id });
-        if (doc) return cleanDoc<Reference>(doc);
-      } catch (err) {
-        console.warn("[ReferenceRepository] MongoDB findById error:", err);
-      }
-    }
-
-    const found = inMemoryReferences.find((r) => r.id === id);
-    return found || null;
+    const doc = await col.findOne({ id, userId });
+    return doc ? cleanDoc<Reference>(doc) : null;
   },
 
-  async create(data: Partial<Reference>): Promise<Reference> {
+  async create(data: Partial<Reference>, userId: string): Promise<Reference> {
+    if (!userId) throw new Error("Authenticated userId is required to create a reference.");
+    const col = getCollection<Reference>("references");
+
     const newRef: Reference = {
       ...(data as Reference),
       id: data.id || `ref_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+      userId, // Strictly bind to authenticated user
       saved: true,
       dateAdded: data.dateAdded || new Date().toISOString().split("T")[0],
     };
 
-    const col = getCollection<Reference>("references");
-    if (col) {
-      try {
-        await col.updateOne({ id: newRef.id }, { $set: newRef }, { upsert: true });
+    await col.updateOne({ id: newRef.id, userId }, { $set: newRef }, { upsert: true });
 
-        // If it's a paper, also maintain record in the 'papers' collection
-        if (newRef.type === "PAPER") {
-          const papersCol = getCollection("papers");
-          if (papersCol) {
-            await papersCol.updateOne({ id: newRef.id }, { $set: newRef }, { upsert: true });
-          }
-        }
-      } catch (err) {
-        console.warn("[ReferenceRepository] MongoDB create/update error:", err);
-      }
-    }
-
-    // Keep in-memory cache synchronized
-    const existingIdx = inMemoryReferences.findIndex((r) => r.id === newRef.id);
-    if (existingIdx >= 0) {
-      inMemoryReferences[existingIdx] = newRef;
-    } else {
-      inMemoryReferences.unshift(newRef);
+    // If it's a paper, also maintain record in the 'papers' collection
+    if (newRef.type === "PAPER") {
+      const papersCol = getCollection("papers");
+      await papersCol.updateOne({ id: newRef.id, userId }, { $set: newRef }, { upsert: true });
     }
 
     return newRef;
   },
 
-  async update(id: string, updateData: Partial<Reference>): Promise<Reference | null> {
+  async update(id: string, updateData: Partial<Reference>, userId: string): Promise<Reference | null> {
+    if (!userId) throw new Error("Authenticated userId is required to update a reference.");
     const col = getCollection<Reference>("references");
-    if (col) {
-      try {
-        const res = await col.findOneAndUpdate(
-          { id },
-          { $set: updateData },
-          { returnDocument: "after" }
-        );
-        if (res) {
-          // If paper, also update in papers collection
-          const papersCol = getCollection("papers");
-          if (papersCol) {
-            await papersCol.updateOne({ id }, { $set: updateData });
-          }
-          return cleanDoc<Reference>(res);
-        }
-      } catch (err) {
-        console.warn("[ReferenceRepository] MongoDB update error:", err);
+
+    // Do not allow reassigning document ownership
+    const { userId: _, id: __, ...safeData } = updateData;
+
+    const res = await col.findOneAndUpdate(
+      { id, userId },
+      { $set: safeData },
+      { returnDocument: "after" }
+    );
+
+    if (res) {
+      // If paper, also update in papers collection
+      if ((res as any).type === "PAPER") {
+        const papersCol = getCollection("papers");
+        await papersCol.updateOne({ id, userId }, { $set: safeData });
       }
+      return cleanDoc<Reference>(res);
     }
 
-    const idx = inMemoryReferences.findIndex((r) => r.id === id);
-    if (idx < 0) return null;
-
-    inMemoryReferences[idx] = {
-      ...inMemoryReferences[idx],
-      ...updateData,
-      id,
-    } as Reference;
-
-    return inMemoryReferences[idx];
+    return null;
   },
 
-  async delete(id: string): Promise<boolean> {
-    let deleted = false;
+  async delete(id: string, userId: string): Promise<boolean> {
+    if (!userId) throw new Error("Authenticated userId is required to delete a reference.");
     const col = getCollection<Reference>("references");
-    if (col) {
-      try {
-        const res = await col.deleteOne({ id });
-        deleted = res.deletedCount > 0;
 
-        const papersCol = getCollection("papers");
-        if (papersCol) {
-          await papersCol.deleteOne({ id });
-        }
-      } catch (err) {
-        console.warn("[ReferenceRepository] MongoDB delete error:", err);
-      }
+    const res = await col.deleteOne({ id, userId });
+    const deleted = res.deletedCount > 0;
+
+    if (deleted) {
+      const papersCol = getCollection("papers");
+      await papersCol.deleteOne({ id, userId });
     }
-
-    const initialLen = inMemoryReferences.length;
-    inMemoryReferences = inMemoryReferences.filter((r) => r.id !== id);
-    if (inMemoryReferences.length < initialLen) deleted = true;
 
     return deleted;
   },
 
-  async count(options?: { type?: string }): Promise<number> {
+  async count(userId: string, options?: { type?: string }): Promise<number> {
+    if (!userId) return 0;
     const col = getCollection<Reference>("references");
-    if (col) {
-      try {
-        const filter = options?.type && options.type !== "ALL" ? { type: options.type } : {};
-        return await col.countDocuments(filter);
-      } catch (err) {
-        console.warn("[ReferenceRepository] MongoDB count error:", err);
-      }
-    }
-
+    const filter: any = { userId };
     if (options?.type && options.type !== "ALL") {
-      return inMemoryReferences.filter((r) => r.type === options.type).length;
+      filter.type = options.type;
     }
-    return inMemoryReferences.length;
+    return await col.countDocuments(filter);
   },
 };
 
 /**
- * Paper Repository for Research Papers and Gaps
+ * Paper Repository for Research Papers and Gaps - Scoped to Authenticated User
  */
 export const paperRepository = {
-  async findAll(): Promise<PaperReference[]> {
+  async findAll(userId: string): Promise<PaperReference[]> {
+    if (!userId) throw new Error("Authenticated userId is required to query papers.");
     const papersCol = getCollection<PaperReference>("papers");
-    if (papersCol) {
-      try {
-        const docs = await papersCol.find({}).sort({ dateAdded: -1 }).toArray();
-        if (docs.length > 0) {
-          return docs.map(cleanDoc);
-        }
-      } catch (err) {
-        console.warn("[PaperRepository] MongoDB findAll error:", err);
-      }
+
+    const docs = await papersCol.find({ userId }).sort({ dateAdded: -1 }).toArray();
+    if (docs.length > 0) {
+      return docs.map(cleanDoc);
     }
 
     // Check references collection for type=PAPER
     const refCol = getCollection<Reference>("references");
-    if (refCol) {
-      try {
-        const docs = await refCol.find({ type: "PAPER" }).sort({ dateAdded: -1 }).toArray();
-        if (docs.length > 0) {
-          return docs.map(cleanDoc) as PaperReference[];
-        }
-      } catch (err) {
-        console.warn("[PaperRepository] MongoDB refCol find error:", err);
-      }
-    }
-
-    return inMemoryReferences.filter((r) => r.type === "PAPER") as PaperReference[];
+    const refDocs = await refCol.find({ userId, type: "PAPER" }).sort({ dateAdded: -1 }).toArray();
+    return refDocs.map(cleanDoc) as PaperReference[];
   },
 
-  async findById(id: string): Promise<PaperReference | null> {
+  async findById(id: string, userId: string): Promise<PaperReference | null> {
+    if (!userId) throw new Error("Authenticated userId is required to query paper.");
     const papersCol = getCollection<PaperReference>("papers");
-    if (papersCol) {
-      try {
-        const doc = await papersCol.findOne({ id });
-        if (doc) return cleanDoc<PaperReference>(doc);
-      } catch (err) {
-        console.warn("[PaperRepository] MongoDB findById error:", err);
-      }
-    }
+    const doc = await papersCol.findOne({ id, userId });
+    if (doc) return cleanDoc<PaperReference>(doc);
 
     const refCol = getCollection<Reference>("references");
-    if (refCol) {
-      try {
-        const doc = await refCol.findOne({ id, type: "PAPER" });
-        if (doc) return cleanDoc<PaperReference>(doc as any);
-      } catch (err) {
-        console.warn("[PaperRepository] MongoDB refCol findOne error:", err);
-      }
-    }
-
-    const found = inMemoryReferences.find((r) => r.id === id && r.type === "PAPER");
-    return (found as PaperReference) || null;
+    const refDoc = await refCol.findOne({ id, userId, type: "PAPER" });
+    return refDoc ? (cleanDoc<PaperReference>(refDoc as any)) : null;
   },
 
-  async getResearchGaps(): Promise<ResearchGap[]> {
-    const papers = await this.findAll();
+  async getResearchGaps(userId: string): Promise<ResearchGap[]> {
+    const papers = await this.findAll(userId);
     return papers.flatMap((p) => (p as any).researchGapsList || p.researchGaps || []);
   },
 };
 
 /**
- * Citation Paper Repository (Saved A4 Citation Documents)
+ * Citation Paper Repository (Saved A4 Citation Documents) - Scoped to Authenticated User
  */
 export const citationPaperRepository = {
-  async findAll(): Promise<CitationPaper[]> {
+  async findAll(userId: string): Promise<CitationPaper[]> {
+    if (!userId) throw new Error("Authenticated userId is required to query citation papers.");
     const col = getCollection<CitationPaper>("citationPapers");
-    if (col) {
-      try {
-        const docs = await col.find({}).sort({ generatedAt: -1, createdAt: -1 }).toArray();
-        return docs.map(cleanDoc);
-      } catch (err) {
-        console.warn("[CitationPaperRepository] MongoDB findAll error:", err);
-      }
-    }
-    return inMemoryCitationPapers;
+    const docs = await col.find({ userId }).sort({ generatedAt: -1, createdAt: -1 }).toArray();
+    return docs.map(cleanDoc);
   },
 
-  async findById(id: string): Promise<CitationPaper | null> {
+  async findById(id: string, userId: string): Promise<CitationPaper | null> {
+    if (!userId) throw new Error("Authenticated userId is required to query citation paper.");
     const col = getCollection<CitationPaper>("citationPapers");
-    if (col) {
-      try {
-        const doc = await col.findOne({ id });
-        if (doc) return cleanDoc<CitationPaper>(doc);
-      } catch (err) {
-        console.warn("[CitationPaperRepository] MongoDB findById error:", err);
-      }
-    }
-
-    const found = inMemoryCitationPapers.find((p) => p.id === id);
-    return found || null;
+    const doc = await col.findOne({ id, userId });
+    return doc ? cleanDoc<CitationPaper>(doc) : null;
   },
 
-  async create(data: Partial<CitationPaper>): Promise<CitationPaper> {
+  async create(data: Partial<CitationPaper>, userId: string): Promise<CitationPaper> {
+    if (!userId) throw new Error("Authenticated userId is required to create a citation paper.");
+    const col = getCollection<CitationPaper>("citationPapers");
+
     const newPaper: CitationPaper = {
       id: data.id || `cp_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+      userId, // Strictly bind to authenticated user
       title: data.title || "Untitled Citation Paper",
       citationStyle: data.citationStyle || "IEEE",
       generatedAt: data.generatedAt || new Date().toISOString(),
@@ -351,98 +283,50 @@ export const citationPaperRepository = {
       customNotes: data.customNotes,
     };
 
-    const col = getCollection<CitationPaper>("citationPapers");
-    if (col) {
-      try {
-        await col.updateOne({ id: newPaper.id }, { $set: newPaper }, { upsert: true });
-      } catch (err) {
-        console.warn("[CitationPaperRepository] MongoDB create error:", err);
-      }
-    }
-
-    const idx = inMemoryCitationPapers.findIndex((p) => p.id === newPaper.id);
-    if (idx >= 0) {
-      inMemoryCitationPapers[idx] = newPaper;
-    } else {
-      inMemoryCitationPapers.unshift(newPaper);
-    }
+    await col.updateOne({ id: newPaper.id, userId }, { $set: newPaper }, { upsert: true });
     return newPaper;
   },
 
-  async delete(id: string): Promise<boolean> {
-    let deleted = false;
+  async delete(id: string, userId: string): Promise<boolean> {
+    if (!userId) throw new Error("Authenticated userId is required to delete a citation paper.");
     const col = getCollection<CitationPaper>("citationPapers");
-    if (col) {
-      try {
-        const res = await col.deleteOne({ id });
-        deleted = res.deletedCount > 0;
-      } catch (err) {
-        console.warn("[CitationPaperRepository] MongoDB delete error:", err);
-      }
-    }
-
-    const initialLen = inMemoryCitationPapers.length;
-    inMemoryCitationPapers = inMemoryCitationPapers.filter((p) => p.id !== id);
-    if (inMemoryCitationPapers.length < initialLen) deleted = true;
-
-    return deleted;
+    const res = await col.deleteOne({ id, userId });
+    return res.deletedCount > 0;
   },
 };
 
 /**
- * Notification Repository
+ * Notification Repository - Scoped to Authenticated User in MongoDB
  */
 export const notificationRepository = {
-  async findAll(): Promise<Notification[]> {
-    return inMemoryNotifications;
+  async findAll(userId: string): Promise<Notification[]> {
+    if (!userId) return [];
+    const col = getCollection<Notification>("notifications");
+    const docs = await col.find({ userId }).sort({ time: -1 }).toArray();
+    return docs.map(cleanDoc);
   },
 
-  async create(notif: Partial<Notification>): Promise<Notification> {
+  async create(notif: Partial<Notification>, userId: string): Promise<Notification> {
+    if (!userId) throw new Error("Authenticated userId is required to create a notification.");
+    const col = getCollection<Notification>("notifications");
+
     const newNotif: Notification = {
       id: notif.id || `n_${Date.now()}`,
+      userId,
       title: notif.title || "Notification",
       message: notif.message || "",
       time: notif.time || "Just now",
       read: Boolean(notif.read),
       type: notif.type || "info",
     };
-    inMemoryNotifications.unshift(newNotif);
+
+    await col.insertOne(newNotif);
     return newNotif;
   },
 
-  async markAllRead(): Promise<void> {
-    inMemoryNotifications = inMemoryNotifications.map((n) => ({ ...n, read: true }));
-  },
-};
-
-/**
- * User Repository
- */
-export const userRepository = {
-  async getProfile(email?: string): Promise<any> {
-    const col = getCollection("users");
-    if (col) {
-      try {
-        const query = email ? { email } : {};
-        const user = await col.findOne(query);
-        if (user) return cleanDoc(user);
-      } catch (err) {
-        console.warn("[UserRepository] MongoDB getProfile error:", err);
-      }
-    }
-    return null;
-  },
-
-  async saveProfile(profile: any): Promise<any> {
-    const col = getCollection("users");
-    if (col) {
-      try {
-        const email = profile.email || "researcher@refscan.app";
-        await col.updateOne({ email }, { $set: profile }, { upsert: true });
-      } catch (err) {
-        console.warn("[UserRepository] MongoDB saveProfile error:", err);
-      }
-    }
-    return profile;
+  async markAllRead(userId: string): Promise<void> {
+    if (!userId) return;
+    const col = getCollection<Notification>("notifications");
+    await col.updateMany({ userId }, { $set: { read: true } });
   },
 };

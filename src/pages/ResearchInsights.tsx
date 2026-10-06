@@ -4,20 +4,58 @@ import { FileText, Lightbulb, Cpu, Globe, BarChart2 } from "lucide-react";
 import { useRefScan } from "../context/RefScanContext";
 import { PaperReference, WebsiteReference } from "../types";
 
+function getPaperGaps(p: PaperReference) {
+  if (Array.isArray(p.researchGaps) && p.researchGaps.length > 0) {
+    return p.researchGaps.map((g) => ({
+      ...g,
+      type: g.type || "unexplored",
+      strength: g.strength || "moderate",
+    }));
+  }
+  if (Array.isArray(p.researchGapsList) && p.researchGapsList.length > 0) {
+    return p.researchGapsList.map((g, idx) => ({
+      ...g,
+      type: g.type || (idx % 3 === 0 ? "limitation" : idx % 3 === 1 ? "unexplored" : "improvement"),
+      strength: g.strength || (idx === 0 ? "strong" : "moderate"),
+    }));
+  }
+  return [];
+}
+
+function getPaperTechs(p: PaperReference): string[] {
+  if (Array.isArray(p.technologies) && p.technologies.length > 0) return p.technologies.filter(Boolean);
+  if (Array.isArray(p.toolsAndTechList) && p.toolsAndTechList.length > 0) return p.toolsAndTechList.filter(Boolean);
+  if (Array.isArray(p.keywords) && p.keywords.length > 0) return p.keywords.filter(Boolean);
+  return [];
+}
+
+function getPaperAlgos(p: PaperReference): string[] {
+  if (Array.isArray(p.algorithms) && p.algorithms.length > 0) return p.algorithms.filter(Boolean);
+  if (Array.isArray(p.algorithmsList) && p.algorithmsList.length > 0) return p.algorithmsList.filter(Boolean);
+  return [];
+}
+
+function getPaperLimitations(p: PaperReference): string[] {
+  if (Array.isArray(p.limitations) && p.limitations.length > 0) return p.limitations.filter(Boolean);
+  if (Array.isArray(p.limitationsList) && p.limitationsList.length > 0) return p.limitationsList.filter(Boolean);
+  return [];
+}
+
 export default function ResearchInsights() {
   const { references } = useRefScan();
   
   const papers = references.filter((r) => r.type === "PAPER") as PaperReference[];
   const websites = references.filter((r) => r.type === "WEBSITE") as WebsiteReference[];
 
-  const totalGaps = papers.reduce((a, p) => a + p.researchGaps.length, 0);
-  const allTechs = [...new Set(papers.flatMap((p) => p.technologies))];
-  const allAlgos = [...new Set(papers.flatMap((p) => p.algorithms))];
+  const totalGaps = papers.reduce((a, p) => a + getPaperGaps(p).length, 0);
+  const allTechs = [...new Set(papers.flatMap((p) => getPaperTechs(p)))];
+  const allAlgos = [...new Set(papers.flatMap((p) => getPaperAlgos(p)))];
 
   // Dynamic Chart calculations based on current workspace state
   const getTechChartData = () => {
     const counts: Record<string, number> = {};
-    papers.flatMap((p) => p.technologies).forEach((t) => {
+    papers.flatMap((p) => getPaperTechs(p)).forEach((t) => {
+      if (!t) return;
       counts[t] = (counts[t] || 0) + 1;
     });
     return Object.entries(counts)
@@ -28,7 +66,8 @@ export default function ResearchInsights() {
 
   const getAlgoChartData = () => {
     const counts: Record<string, number> = {};
-    papers.flatMap((p) => p.algorithms).forEach((a) => {
+    papers.flatMap((p) => getPaperAlgos(p)).forEach((a) => {
+      if (!a) return;
       counts[a] = (counts[a] || 0) + 1;
     });
     return Object.entries(counts)
@@ -39,8 +78,9 @@ export default function ResearchInsights() {
 
   const getGapCategoryData = () => {
     const counts: Record<string, number> = { unexplored: 0, improvement: 0, novelty: 0, limitation: 0 };
-    papers.flatMap((p) => p.researchGaps).forEach((g) => {
-      counts[g.type] = (counts[g.type] || 0) + 1;
+    papers.flatMap((p) => getPaperGaps(p)).forEach((g) => {
+      const t = g.type && counts[g.type] !== undefined ? g.type : "unexplored";
+      counts[t] = (counts[t] || 0) + 1;
     });
     
     const colors = { 
@@ -57,10 +97,11 @@ export default function ResearchInsights() {
   };
 
   const getLimitationData = () => {
-    const items = papers.flatMap((p) => p.limitations);
+    const items = papers.flatMap((p) => getPaperLimitations(p));
     const counts: Record<string, number> = {};
     
     items.forEach((l) => {
+      if (!l) return;
       let cat = "General";
       if (/light|lux|night|weather|rain|fog/i.test(l)) cat = "Lighting/Env";
       else if (/language|english|multilingual/i.test(l)) cat = "Translation/Lang";

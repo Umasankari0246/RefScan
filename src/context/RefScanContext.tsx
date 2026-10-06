@@ -1,23 +1,44 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
-import { Reference, Notification, BookReference, PaperReference, ExtractedReferenceItem, CitationStyle, CitationPaper } from "../types";
+import {
+  Reference,
+  Notification,
+  BookReference,
+  PaperReference,
+  ExtractedReferenceItem,
+  CitationStyle,
+  CitationPaper,
+  SafeUser,
+  AuthResponse,
+} from "../types";
 import { StorageService } from "../services/storageService";
 import { ReferenceService } from "../services/referenceService";
 import { apiClient, BackendHealthStatus } from "../services/apiClient";
+import { AuthService } from "../services/authService";
 import { fetchBookMetadata } from "../services/bookMetadataService";
 import { extractTextFromFile, parsePaperMetadata } from "../services/paperExtractionService";
 import { extractReferencesFromText, convertExtractedItemToReference } from "../services/referenceExtractionService";
 
 interface RefScanContextType {
+  // Authentication & Current User
+  currentUser: SafeUser | null;
+  isAuthenticated: boolean;
+  isAuthChecking: boolean;
+  login: (email: string, password?: string) => Promise<AuthResponse>;
+  register: (data: { name: string; email: string; password: string; title?: string; institution?: string }) => Promise<AuthResponse>;
+  logout: () => Promise<void>;
+  refreshUserData: () => Promise<void>;
+
+  // Scoped User Library
   references: Reference[];
-  addReference: (ref: Reference) => void;
-  updateReference: (ref: Reference) => void;
-  deleteReference: (id: string) => void;
+  addReference: (ref: Reference) => Promise<void>;
+  updateReference: (ref: Reference) => Promise<void>;
+  deleteReference: (id: string) => Promise<void>;
   notifications: Notification[];
   markNotificationRead: (id: string) => void;
   markAllNotificationsRead: () => void;
 
   // Backend connection state
-  backendStatus: "online" | "offline" | "checking";
+  backendStatus: "online" | "offline" | "checking" | "degraded";
   backendHealth: BackendHealthStatus | null;
   checkBackendHealth: () => Promise<void>;
 
@@ -52,17 +73,85 @@ interface RefScanContextType {
 
   // Saved Citation Papers
   citationPapers: CitationPaper[];
-  saveCitationPaper: (paper: CitationPaper) => void;
-  deleteCitationPaper: (id: string) => void;
+  saveCitationPaper: (paper: CitationPaper) => Promise<void>;
+  deleteCitationPaper: (id: string) => Promise<void>;
 }
 
 const RefScanContext = createContext<RefScanContextType | undefined>(undefined);
 
+function normalizeReference(ref: Reference): Reference {
+  if (!ref) return ref;
+  if (ref.type === "PAPER") {
+    const p = ref as PaperReference;
+    const rawGaps = Array.isArray(p.researchGaps) && p.researchGaps.length > 0
+      ? p.researchGaps
+      : Array.isArray(p.researchGapsList)
+        ? p.researchGapsList
+        : [];
+    const normalizedGaps = rawGaps.map((g, idx) => ({
+      ...g,
+      id: g.id || `${p.id || "paper"}_gap_${idx + 1}`,
+      strength: (g.strength === "strong" || g.strength === "moderate" || g.strength === "emerging") ? g.strength : "moderate",
+      type: (g.type === "limitation" || g.type === "unexplored" || g.type === "improvement" || g.type === "novelty") ? g.type : "unexplored",
+    }));
+
+    return {
+      ...p,
+      authors: Array.isArray(p.authors) && p.authors.length > 0 ? p.authors : ["Unknown Author"],
+      keywords: Array.isArray(p.keywords) ? p.keywords : [],
+      technologies: Array.isArray(p.technologies) && p.technologies.length > 0
+        ? p.technologies
+        : Array.isArray(p.toolsAndTechList) ? p.toolsAndTechList : [],
+      algorithms: Array.isArray(p.algorithms) && p.algorithms.length > 0
+        ? p.algorithms
+        : Array.isArray(p.algorithmsList) ? p.algorithmsList : [],
+      datasets: Array.isArray(p.datasets) && p.datasets.length > 0
+        ? p.datasets
+        : Array.isArray(p.datasetsUsedList) ? p.datasetsUsedList : [],
+      keyFindings: Array.isArray(p.keyFindings) && p.keyFindings.length > 0
+        ? p.keyFindings
+        : Array.isArray(p.resultsAndFindingsList) ? p.resultsAndFindingsList : [],
+      limitations: Array.isArray(p.limitations) && p.limitations.length > 0
+        ? p.limitations
+        : Array.isArray(p.limitationsList) ? p.limitationsList : [],
+      futureScope: Array.isArray(p.futureScope) && p.futureScope.length > 0
+        ? p.futureScope
+        : Array.isArray(p.futureScopeList) ? p.futureScopeList : [],
+      researchGaps: normalizedGaps,
+      researchGapsList: normalizedGaps,
+      researchProblem: p.researchProblem || p.problemStatement || "",
+      researchObjective: p.researchObjective || p.objectivesList?.[0] || "",
+      methodology: p.methodology || p.proposedMethod || "",
+      existingMethod: p.existingMethod || p.existingApproach || "",
+      references: Array.isArray(p.references) ? p.references : Array.isArray(p.extractedReferences) ? p.extractedReferences : [],
+      sections: Array.isArray(p.sections) ? p.sections : [],
+      fullText: typeof p.fullText === "string" ? p.fullText : "",
+      rawTextByPage: Array.isArray(p.rawTextByPage) ? p.rawTextByPage : [],
+    };
+  }
+  if (ref.type === "BOOK") {
+    const b = ref as BookReference;
+    return {
+      ...b,
+      authors: Array.isArray(b.authors) && b.authors.length > 0 ? b.authors : ["Unknown Author"],
+    };
+  }
+  return ref;
+}
+
 export const RefScanProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [references, setReferences] = useState<Reference[]>(() => StorageService.getReferences());
-  const [notifications, setNotifications] = useState<Notification[]>(() => StorageService.getNotifications());
-  const [citationPapers, setCitationPapers] = useState<CitationPaper[]>(() => StorageService.getCitationPapers());
-  const [backendStatus, setBackendStatus] = useState<"online" | "offline" | "checking">("checking");
+  // Auth state
+  const [currentUser, setCurrentUser] = useState<SafeUser | null>(() => AuthService.getCachedUser());
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => AuthService.isAuthenticated());
+  const [isAuthChecking, setIsAuthChecking] = useState<boolean>(true);
+
+  // User-scoped workspace collections
+  const [references, setReferences] = useState<Reference[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [citationPapers, setCitationPapers] = useState<CitationPaper[]>([]);
+
+  // Backend connection
+  const [backendStatus, setBackendStatus] = useState<"online" | "offline" | "checking" | "degraded">("checking");
   const [backendHealth, setBackendHealth] = useState<BackendHealthStatus | null>(null);
 
   // Scanner states
@@ -75,71 +164,59 @@ export const RefScanProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [activePaper, setActivePaper] = useState<PaperReference | null>(null);
 
   // Staged batch collection state
-  const [stagedReferences, setStagedReferencesState] = useState<ExtractedReferenceItem[]>(() => {
+  const [stagedReferences, setStagedReferencesState] = useState<ExtractedReferenceItem[]>([]);
+  const [stagedSessionName, setStagedSessionName] = useState<string>("Research References");
+  const [stagedSourceType, setStagedSourceType] = useState<"pdf" | "book_scan" | "manual">("pdf");
+
+  /**
+   * Load data strictly for the currently authenticated user
+   */
+  const loadUserData = useCallback(async (user: SafeUser) => {
     try {
-      const stored = localStorage.getItem("refscan_staged_references");
-      return stored ? JSON.parse(stored) : [];
-    } catch {
-      return [];
-    }
-  });
+      const [serverRefs, serverCitations, serverNotifs] = await Promise.all([
+        apiClient.getReferences(),
+        apiClient.getCitationPapers(),
+        apiClient.getNotifications(),
+      ]);
 
-  const [stagedSessionName, setStagedSessionName] = useState<string>(() => {
-    return localStorage.getItem("refscan_staged_session_name") || "Research References";
-  });
+      const normalizedRefs = (serverRefs || []).map(normalizeReference);
+      setReferences(normalizedRefs);
+      setCitationPapers(serverCitations);
+      setNotifications(serverNotifs);
 
-  const [stagedSourceType, setStagedSourceType] = useState<"pdf" | "book_scan" | "manual">(() => {
-    return (localStorage.getItem("refscan_staged_source_type") as any) || "pdf";
-  });
-
-  // Sync staged references to localStorage
-  useEffect(() => {
-    try {
-      localStorage.setItem("refscan_staged_references", JSON.stringify(stagedReferences));
-      localStorage.setItem("refscan_staged_session_name", stagedSessionName);
-      localStorage.setItem("refscan_staged_source_type", stagedSourceType);
+      // Cache strictly under this user's key
+      StorageService.setReferences(normalizedRefs, user.id);
+      StorageService.setCitationPapers(serverCitations, user.id);
+      StorageService.setNotifications(serverNotifs, user.id);
     } catch (err) {
-      console.warn("Error storing staged references:", err);
+      console.warn("[RefScanContext] Error loading user data:", err);
+      // Fallback to user-scoped cache
+      setReferences((StorageService.getReferences(user.id) || []).map(normalizeReference));
+      setCitationPapers(StorageService.getCitationPapers(user.id));
+      setNotifications(StorageService.getNotifications(user.id));
     }
-  }, [stagedReferences, stagedSessionName, stagedSourceType]);
+  }, []);
 
-  // Check backend health & sync references and citation papers
+  /**
+   * Refresh current user's data
+   */
+  const refreshUserData = useCallback(async () => {
+    if (currentUser) {
+      await loadUserData(currentUser);
+    }
+  }, [currentUser, loadUserData]);
+
+  /**
+   * Check backend health
+   */
   const checkBackendHealth = useCallback(async () => {
     try {
       const health = await apiClient.checkHealth();
       setBackendHealth(health);
-      if (health.status === "online") {
+      if (health.status === "online" || health.database?.status === "connected") {
         setBackendStatus("online");
-
-        // 1. Sync references
-        const serverRefs = await apiClient.getReferences();
-        if (serverRefs && serverRefs.length > 0) {
-          setReferences(serverRefs);
-          StorageService.setReferences(serverRefs);
-        } else {
-          // If server collection is empty but local storage has references, sync to MongoDB
-          const localRefs = StorageService.getReferences();
-          if (localRefs && localRefs.length > 0) {
-            for (const r of localRefs) {
-              await apiClient.saveReference(r).catch(() => {});
-            }
-          }
-        }
-
-        // 2. Sync citation papers
-        const serverCitations = await apiClient.getCitationPapers();
-        if (serverCitations && serverCitations.length > 0) {
-          setCitationPapers(serverCitations);
-          StorageService.setCitationPapers(serverCitations);
-        } else {
-          // If server collection is empty but local storage has citation papers, sync to MongoDB
-          const localCitations = StorageService.getCitationPapers();
-          if (localCitations && localCitations.length > 0) {
-            for (const cp of localCitations) {
-              await apiClient.saveCitationPaper(cp).catch(() => {});
-            }
-          }
-        }
+      } else if (health.status === "degraded") {
+        setBackendStatus("degraded");
       } else {
         setBackendStatus("offline");
       }
@@ -148,31 +225,117 @@ export const RefScanProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
   }, []);
 
+  /**
+   * Verify session on initial app mount
+   */
   useEffect(() => {
-    checkBackendHealth();
+    let mounted = true;
+
+    async function initSession() {
+      setIsAuthChecking(true);
+      await checkBackendHealth();
+
+      try {
+        const verifiedUser = await AuthService.verifySession();
+        if (mounted) {
+          if (verifiedUser) {
+            setCurrentUser(verifiedUser);
+            setIsAuthenticated(true);
+            await loadUserData(verifiedUser);
+          } else {
+            setCurrentUser(null);
+            setIsAuthenticated(false);
+            setReferences([]);
+            setCitationPapers([]);
+            setNotifications([]);
+          }
+        }
+      } catch (err) {
+        if (mounted) {
+          console.warn("[RefScanContext] Session verification error:", err);
+          setCurrentUser(null);
+          setIsAuthenticated(false);
+        }
+      } finally {
+        if (mounted) {
+          setIsAuthChecking(false);
+        }
+      }
+    }
+
+    initSession();
+
     const interval = setInterval(checkBackendHealth, 30000);
-    return () => clearInterval(interval);
-  }, [checkBackendHealth]);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, [checkBackendHealth, loadUserData]);
 
-  useEffect(() => {
-    StorageService.setReferences(references);
-  }, [references]);
+  /**
+   * Login action: Authenticate against MongoDB, store token, load fresh isolated data
+   */
+  const login = async (email: string, password?: string): Promise<AuthResponse> => {
+    const authRes = await AuthService.login(email, password);
+    setCurrentUser(authRes.user);
+    setIsAuthenticated(true);
+    await loadUserData(authRes.user);
+    return authRes;
+  };
 
-  useEffect(() => {
-    StorageService.setNotifications(notifications);
-  }, [notifications]);
+  /**
+   * Register action: Create MongoDB user, store token, start with fresh isolated workspace
+   */
+  const register = async (data: {
+    name: string;
+    email: string;
+    password: string;
+    title?: string;
+    institution?: string;
+  }): Promise<AuthResponse> => {
+    const authRes = await AuthService.register(data);
+    setCurrentUser(authRes.user);
+    setIsAuthenticated(true);
 
-  useEffect(() => {
-    StorageService.setCitationPapers(citationPapers);
-  }, [citationPapers]);
+    // Reset workspace for new user
+    setReferences([]);
+    setCitationPapers([]);
+    setNotifications([]);
+    setStagedReferencesState([]);
 
-  const addReference = (ref: Reference) => {
-    const refWithId: Reference = {
+    await loadUserData(authRes.user);
+    return authRes;
+  };
+
+  /**
+   * Logout action: Invalidate token and immediately purge all private in-memory state
+   */
+  const logout = async (): Promise<void> => {
+    await AuthService.logout();
+    StorageService.clearSession();
+    setCurrentUser(null);
+    setIsAuthenticated(false);
+    setReferences([]);
+    setCitationPapers([]);
+    setNotifications([]);
+    setStagedReferencesState([]);
+    setActiveBook(null);
+    setActivePaper(null);
+  };
+
+  /**
+   * Add reference under the authenticated user
+   */
+  const addReference = async (ref: Reference): Promise<void> => {
+    if (!currentUser) throw new Error("Must be logged in to save references.");
+
+    const refWithId: Reference = normalizeReference({
       ...ref,
       id: ref.id || `ref_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+      userId: currentUser.id,
       saved: true,
       dateAdded: ref.dateAdded || new Date().toISOString().split("T")[0],
-    };
+    });
 
     setReferences((prev) => {
       const idx = prev.findIndex((r) => r.id === refWithId.id);
@@ -184,12 +347,24 @@ export const RefScanProvider: React.FC<{ children: React.ReactNode }> = ({ child
       return [refWithId, ...prev];
     });
 
-    ReferenceService.createReference(refWithId).catch((err) => {
-      console.warn("[RefScanContext] Create sync error:", err);
-    });
+    try {
+      const saved = normalizeReference(await apiClient.saveReference(refWithId));
+      // Update with server confirmed version and persist fresh array to cache
+      setReferences((prev) => {
+        const next = prev.map((r) => (r.id === refWithId.id ? saved : r));
+        StorageService.setReferences(next, currentUser.id);
+        return next;
+      });
+    } catch (err: any) {
+      console.error("[RefScanContext] Failed to save reference to MongoDB:", err);
+      // Revert optimistic update if server error
+      setReferences((prev) => prev.filter((r) => r.id !== refWithId.id));
+      throw err;
+    }
 
     const newNotif: Notification = {
       id: "n_" + Date.now(),
+      userId: currentUser.id,
       title: "Reference Saved",
       message: `"${refWithId.title}" is saved in your reference library.`,
       time: "Just now",
@@ -199,18 +374,36 @@ export const RefScanProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setNotifications((prev) => [newNotif, ...prev]);
   };
 
-  const updateReference = (ref: Reference) => {
-    setReferences((prev) => prev.map((r) => (r.id === ref.id ? ref : r)));
-    ReferenceService.updateReference(ref).catch((err) => {
-      console.warn("[RefScanContext] Update sync error:", err);
+  /**
+   * Update reference
+   */
+  const updateReference = async (ref: Reference): Promise<void> => {
+    if (!currentUser) return;
+    const normalized = normalizeReference(ref);
+    setReferences((prev) => {
+      const next = prev.map((r) => (r.id === normalized.id ? normalized : r));
+      StorageService.setReferences(next, currentUser.id);
+      return next;
+    });
+    const serverUpdated = normalizeReference(await apiClient.updateReference(normalized));
+    setReferences((prev) => {
+      const next = prev.map((r) => (r.id === normalized.id ? serverUpdated : r));
+      StorageService.setReferences(next, currentUser.id);
+      return next;
     });
   };
 
-  const deleteReference = (id: string) => {
-    setReferences((prev) => prev.filter((r) => r.id !== id));
-    ReferenceService.deleteReference(id).catch((err) => {
-      console.warn("[RefScanContext] Delete sync error:", err);
+  /**
+   * Delete reference
+   */
+  const deleteReference = async (id: string): Promise<void> => {
+    if (!currentUser) return;
+    setReferences((prev) => {
+      const next = prev.filter((r) => r.id !== id);
+      StorageService.setReferences(next, currentUser.id);
+      return next;
     });
+    await apiClient.deleteReference(id);
   };
 
   const markNotificationRead = (id: string) => {
@@ -219,9 +412,10 @@ export const RefScanProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const markAllNotificationsRead = () => {
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    apiClient.markAllNotificationsRead().catch(() => {});
   };
 
-  // Live ISBN lookup using backend API with client fallback
+  // Live ISBN lookup
   const scanBookIsbn = async (isbn: string): Promise<BookReference> => {
     setScanState("processing");
     try {
@@ -252,7 +446,11 @@ export const RefScanProvider: React.FC<{ children: React.ReactNode }> = ({ child
         const payload = await extractTextFromFile(fileOrName);
         const parsedPaper = await parsePaperMetadata(fileOrName, payload);
         const savedPaper = await apiClient.uploadPaper(parsedPaper);
-        const finalPaper = savedPaper || parsedPaper;
+        const finalPaper = normalizeReference({ ...parsedPaper, ...(savedPaper || {}) }) as PaperReference;
+
+        if (currentUser) {
+          finalPaper.userId = currentUser.id;
+        }
 
         // Extract real references from the PDF text if available
         if (payload.text.length > 50) {
@@ -275,7 +473,7 @@ export const RefScanProvider: React.FC<{ children: React.ReactNode }> = ({ child
         setReferences((prev) => {
           const exists = prev.some((r) => r.id === finalPaper.id);
           const next = exists ? prev.map((r) => (r.id === finalPaper.id ? finalPaper : r)) : [finalPaper, ...prev];
-          StorageService.setReferences(next);
+          if (currentUser) StorageService.setReferences(next, currentUser.id);
           return next;
         });
 
@@ -283,12 +481,16 @@ export const RefScanProvider: React.FC<{ children: React.ReactNode }> = ({ child
         return finalPaper;
       } else {
         const fileName = fileOrName;
-        const serverPaper = await apiClient.uploadPaper(fileName, fileSize);
+        const serverPaper = normalizeReference(await apiClient.uploadPaper(fileName, fileSize)) as PaperReference;
         serverPaper.saved = true;
+        if (currentUser) {
+          serverPaper.userId = currentUser.id;
+        }
+
         setReferences((prev) => {
           const exists = prev.some((r) => r.id === serverPaper.id);
           const next = exists ? prev.map((r) => (r.id === serverPaper.id ? serverPaper : r)) : [serverPaper, ...prev];
-          StorageService.setReferences(next);
+          if (currentUser) StorageService.setReferences(next, currentUser.id);
           return next;
         });
         setActivePaper(serverPaper);
@@ -297,8 +499,9 @@ export const RefScanProvider: React.FC<{ children: React.ReactNode }> = ({ child
     } catch (err) {
       console.warn("[RefScanContext] Paper extraction failed:", err);
       const fileName = typeof fileOrName === "string" ? fileOrName : fileOrName.name;
-      const failedPaper: PaperReference = {
+      const failedPaper = normalizeReference({
         id: "p_" + Date.now(),
+        userId: currentUser?.id,
         type: "PAPER",
         title: fileName.replace(/\.[^/.]+$/, "").replace(/_/g, " ").replace(/-/g, " "),
         authors: ["Not available"],
@@ -311,7 +514,7 @@ export const RefScanProvider: React.FC<{ children: React.ReactNode }> = ({ child
         analysisStatus: "failed",
         citationStyle: "IEEE",
         saved: false,
-      };
+      } as PaperReference) as PaperReference;
 
       setActivePaper(failedPaper);
       return failedPaper;
@@ -364,24 +567,31 @@ export const RefScanProvider: React.FC<{ children: React.ReactNode }> = ({ child
     targetStyle: CitationStyle = "IEEE"
   ): Promise<{ savedCount: number; skippedCount: number }> => {
     const selectedItems = stagedReferences.filter((item) => item.selected);
-    if (selectedItems.length === 0) return { savedCount: 0, skippedCount: 0 };
+    if (selectedItems.length === 0 || !currentUser) return { savedCount: 0, skippedCount: 0 };
 
     let savedCount = 0;
     const newReferencesToSave: Reference[] = [];
 
     for (const item of selectedItems) {
-      const newRef = convertExtractedItemToReference(item, targetStyle);
+      const newRef = normalizeReference(convertExtractedItemToReference(item, targetStyle));
+      newRef.userId = currentUser.id;
       newReferencesToSave.push(newRef);
       savedCount++;
     }
 
-    setReferences((prev) => [...newReferencesToSave, ...prev]);
+    setReferences((prev) => {
+      const next = [...newReferencesToSave, ...prev];
+      StorageService.setReferences(next, currentUser.id);
+      return next;
+    });
 
-    for (const ref of newReferencesToSave) {
-      ReferenceService.createReference(ref).catch((err) => {
-        console.warn("[RefScanContext] Batch item sync error:", err);
-      });
-    }
+    await Promise.all(
+      newReferencesToSave.map((ref) =>
+        apiClient.saveReference(ref).catch((err) => {
+          console.warn("[RefScanContext] Batch item sync error:", err);
+        })
+      )
+    );
 
     setStagedReferencesState((prev) =>
       prev.map((item) => {
@@ -402,6 +612,7 @@ export const RefScanProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     const newNotif: Notification = {
       id: "n_" + Date.now(),
+      userId: currentUser.id,
       title: "Batch References Saved",
       message: `Successfully added ${savedCount} references to your research library.`,
       time: "Just now",
@@ -415,24 +626,26 @@ export const RefScanProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // --- Saved Citation Papers Actions ---
 
-  const saveCitationPaper = (paper: CitationPaper) => {
-    StorageService.saveCitationPaper(paper);
-    apiClient.saveCitationPaper(paper).catch((err) => {
-      console.warn("[RefScanContext] Citation paper backend sync deferred:", err);
-    });
+  const saveCitationPaper = async (paper: CitationPaper): Promise<void> => {
+    if (!currentUser) return;
+    const paperWithUser = { ...paper, userId: currentUser.id };
 
     setCitationPapers((prev) => {
-      const idx = prev.findIndex((p) => p.id === paper.id);
+      const idx = prev.findIndex((p) => p.id === paperWithUser.id);
       if (idx >= 0) {
         const copy = [...prev];
-        copy[idx] = paper;
+        copy[idx] = paperWithUser;
         return copy;
       }
-      return [paper, ...prev];
+      return [paperWithUser, ...prev];
     });
+
+    await apiClient.saveCitationPaper(paperWithUser);
+    StorageService.saveCitationPaper(paperWithUser, currentUser.id);
 
     const newNotif: Notification = {
       id: "n_" + Date.now(),
+      userId: currentUser.id,
       title: "Citation Paper Saved",
       message: `"${paper.title}" is saved in your citation documents.`,
       time: "Just now",
@@ -442,17 +655,24 @@ export const RefScanProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setNotifications((prev) => [newNotif, ...prev]);
   };
 
-  const deleteCitationPaper = (id: string) => {
-    StorageService.deleteCitationPaper(id);
-    apiClient.deleteCitationPaper(id).catch((err) => {
-      console.warn("[RefScanContext] Citation paper backend delete deferred:", err);
-    });
+  const deleteCitationPaper = async (id: string): Promise<void> => {
+    if (!currentUser) return;
     setCitationPapers((prev) => prev.filter((p) => p.id !== id));
+    await apiClient.deleteCitationPaper(id);
+    StorageService.deleteCitationPaper(id, currentUser.id);
   };
 
   return (
     <RefScanContext.Provider
       value={{
+        currentUser,
+        isAuthenticated,
+        isAuthChecking,
+        login,
+        register,
+        logout,
+        refreshUserData,
+
         references,
         addReference,
         updateReference,

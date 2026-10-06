@@ -1,11 +1,10 @@
 /**
  * RefScan - Storage Service Layer
- * Robust, type-safe abstraction over browser storage (localStorage) with automatic
- * JSON serialization/parsing, error boundary fallbacks, and quota protection.
- * Starts with zero mock data.
+ * Abstraction over browser storage with user-scoped isolation.
+ * Automatically scopes local caches by userId to ensure complete data isolation between accounts.
  */
 
-import { Reference, Notification, CitationStyle, CitationPaper } from "../types";
+import { Reference, Notification, CitationStyle, CitationPaper, SafeUser } from "../types";
 
 export interface UserProfile {
   name: string;
@@ -13,19 +12,36 @@ export interface UserProfile {
   title: string;
   institution?: string;
   avatar?: string;
+  role?: string;
 }
 
 export const STORAGE_KEYS = {
-  REFERENCES: "refscan_references",
-  NOTIFICATIONS: "refscan_notifications",
-  CITATION_PAPERS: "refscan_citation_papers",
+  REFERENCES: "references",
+  NOTIFICATIONS: "notifications",
+  CITATION_PAPERS: "citation_papers",
   PROFILE: "refscan_profile",
   DEFAULT_STYLE: "refscan_default_style",
   THEME: "refscan_theme",
   AUTH_TOKEN: "refscan_auth_token",
+  USER_SESSION: "refscan_user_session",
 } as const;
 
 export class StorageService {
+  /**
+   * Generates a user-isolated storage key
+   */
+  private static getUserKey(baseKey: string, userId?: string): string {
+    if (userId) {
+      return `refscan_u_${userId}_${baseKey}`;
+    }
+    // Try to get current active user id
+    const activeUser = this.safeGet<SafeUser | null>(STORAGE_KEYS.USER_SESSION, null);
+    if (activeUser?.id) {
+      return `refscan_u_${activeUser.id}_${baseKey}`;
+    }
+    return `refscan_anon_${baseKey}`;
+  }
+
   /**
    * Safe getter with JSON parsing and fallback value
    */
@@ -40,13 +56,13 @@ export class StorageService {
       }
       return JSON.parse(raw) as T;
     } catch (err) {
-      console.warn(`[StorageService] Failed to read or parse key "${key}":`, err);
+      console.warn(`[StorageService] Failed to read key "${key}":`, err);
       return defaultValue;
     }
   }
 
   /**
-   * Safe setter with JSON stringification and quota safety
+   * Safe setter with JSON stringification
    */
   static safeSet<T>(key: string, value: T): boolean {
     try {
@@ -77,56 +93,72 @@ export class StorageService {
     }
   }
 
-  // ── References ────────────────────────────────────────────────────────────
+  // ── Scoped References ─────────────────────────────────────────────────────
 
-  static getReferences(): Reference[] {
-    return this.safeGet<Reference[]>(STORAGE_KEYS.REFERENCES, []);
+  static getReferences(userId?: string): Reference[] {
+    const key = this.getUserKey(STORAGE_KEYS.REFERENCES, userId);
+    return this.safeGet<Reference[]>(key, []);
   }
 
-  static setReferences(refs: Reference[]): boolean {
-    return this.safeSet(STORAGE_KEYS.REFERENCES, refs);
+  static setReferences(refs: Reference[], userId?: string): boolean {
+    const key = this.getUserKey(STORAGE_KEYS.REFERENCES, userId);
+    return this.safeSet(key, refs);
   }
 
-  // ── Notifications ─────────────────────────────────────────────────────────
+  // ── Scoped Notifications ──────────────────────────────────────────────────
 
-  static getNotifications(): Notification[] {
-    return this.safeGet<Notification[]>(STORAGE_KEYS.NOTIFICATIONS, []);
+  static getNotifications(userId?: string): Notification[] {
+    const key = this.getUserKey(STORAGE_KEYS.NOTIFICATIONS, userId);
+    return this.safeGet<Notification[]>(key, []);
   }
 
-  static setNotifications(notifs: Notification[]): boolean {
-    return this.safeSet(STORAGE_KEYS.NOTIFICATIONS, notifs);
+  static setNotifications(notifs: Notification[], userId?: string): boolean {
+    const key = this.getUserKey(STORAGE_KEYS.NOTIFICATIONS, userId);
+    return this.safeSet(key, notifs);
   }
 
-  // ── Saved Citation Papers ──────────────────────────────────────────────────
+  // ── Scoped Saved Citation Papers ──────────────────────────────────────────
 
-  static getCitationPapers(): CitationPaper[] {
-    return this.safeGet<CitationPaper[]>(STORAGE_KEYS.CITATION_PAPERS, []);
+  static getCitationPapers(userId?: string): CitationPaper[] {
+    const key = this.getUserKey(STORAGE_KEYS.CITATION_PAPERS, userId);
+    return this.safeGet<CitationPaper[]>(key, []);
   }
 
-  static setCitationPapers(papers: CitationPaper[]): boolean {
-    return this.safeSet(STORAGE_KEYS.CITATION_PAPERS, papers);
+  static setCitationPapers(papers: CitationPaper[], userId?: string): boolean {
+    const key = this.getUserKey(STORAGE_KEYS.CITATION_PAPERS, userId);
+    return this.safeSet(key, papers);
   }
 
-  static saveCitationPaper(paper: CitationPaper): boolean {
-    const existing = this.getCitationPapers();
+  static saveCitationPaper(paper: CitationPaper, userId?: string): boolean {
+    const existing = this.getCitationPapers(userId);
     const idx = existing.findIndex((p) => p.id === paper.id);
     if (idx >= 0) {
       existing[idx] = paper;
     } else {
       existing.unshift(paper);
     }
-    return this.setCitationPapers(existing);
+    return this.setCitationPapers(existing, userId);
   }
 
-  static deleteCitationPaper(id: string): boolean {
-    const existing = this.getCitationPapers();
+  static deleteCitationPaper(id: string, userId?: string): boolean {
+    const existing = this.getCitationPapers(userId);
     const filtered = existing.filter((p) => p.id !== id);
-    return this.setCitationPapers(filtered);
+    return this.setCitationPapers(filtered, userId);
   }
 
-  // ── Profile & Preferences ──────────────────────────────────────────────────
+  // ── User Session & Profile ────────────────────────────────────────────────
 
   static getProfile(): UserProfile {
+    const session = this.safeGet<SafeUser | null>(STORAGE_KEYS.USER_SESSION, null);
+    if (session) {
+      return {
+        name: session.name,
+        email: session.email,
+        title: session.title,
+        institution: session.institution,
+        role: session.role,
+      };
+    }
     return this.safeGet<UserProfile>(STORAGE_KEYS.PROFILE, {
       name: "Researcher",
       email: "researcher@refscan.app",
@@ -155,9 +187,23 @@ export class StorageService {
     return this.safeSet(STORAGE_KEYS.THEME, theme);
   }
 
-  static clearAll(): void {
-    this.safeSet(STORAGE_KEYS.REFERENCES, []);
-    this.safeSet(STORAGE_KEYS.NOTIFICATIONS, []);
-    this.safeSet(STORAGE_KEYS.CITATION_PAPERS, []);
+  /**
+   * Clear session and all active workspace caches
+   */
+  static clearSession(): void {
+    const activeUser = this.safeGet<SafeUser | null>(STORAGE_KEYS.USER_SESSION, null);
+    if (activeUser?.id) {
+      this.safeRemove(`refscan_u_${activeUser.id}_${STORAGE_KEYS.REFERENCES}`);
+      this.safeRemove(`refscan_u_${activeUser.id}_${STORAGE_KEYS.NOTIFICATIONS}`);
+      this.safeRemove(`refscan_u_${activeUser.id}_${STORAGE_KEYS.CITATION_PAPERS}`);
+    }
+    this.safeRemove(STORAGE_KEYS.AUTH_TOKEN);
+    this.safeRemove(STORAGE_KEYS.USER_SESSION);
+    this.safeRemove("refscan_staged_references");
+    this.safeRemove("refscan_staged_session_name");
+    // Also remove any legacy un-scoped keys
+    this.safeRemove("refscan_references");
+    this.safeRemove("refscan_notifications");
+    this.safeRemove("refscan_citation_papers");
   }
 }
