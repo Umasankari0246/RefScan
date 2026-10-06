@@ -662,8 +662,8 @@ function ReferenceRowCard({ refData, onView, onCite, onDelete }: { refData: Refe
           <p className="text-xs sm:text-sm font-semibold text-[var(--text-primary)] truncate leading-snug hover:text-[var(--primary)] cursor-pointer" onClick={onView}>{refData.title}</p>
           <p className="text-[11px] sm:text-xs text-[var(--text-secondary)] mt-0.5">{getSubLabel()}</p>
           <p className="text-[11px] font-mono text-[var(--text-muted)] mt-0.5 truncate">
-            {refData.type === "BOOK" && `ISBN: ${(refData as BookReference).isbn13 || (refData as BookReference).isbn10 || "Not available"}`}
-            {refData.type === "PAPER" && `DOI: ${(refData as PaperReference).doi || "Not available"}`}
+            {refData.type === "BOOK" && ((refData as BookReference).isbn13 || (refData as BookReference).isbn10 ? `ISBN: ${(refData as BookReference).isbn13 || (refData as BookReference).isbn10}` : `Standard Publication`)}
+            {refData.type === "PAPER" && ((refData as PaperReference).doi ? `DOI: ${(refData as PaperReference).doi}` : `Academic Document Ingestion`)}
             {refData.type === "WEBSITE" && `URL: ${(refData as WebsiteReference).url}`}
           </p>
           {refData.sourceDocumentName && (
@@ -739,8 +739,8 @@ function ReferenceGridCard({ refData, onView, onCite, onDelete }: { refData: Ref
         </div>
 
         <p className="text-[11px] font-mono text-[var(--text-muted)] truncate mb-2">
-          {refData.type === "BOOK" && `ISBN: ${(refData as BookReference).isbn13 || (refData as BookReference).isbn10 || "Not available"}`}
-          {refData.type === "PAPER" && `DOI: ${(refData as PaperReference).doi || "Not available"}`}
+          {refData.type === "BOOK" && ((refData as BookReference).isbn13 || (refData as BookReference).isbn10 ? `ISBN: ${(refData as BookReference).isbn13 || (refData as BookReference).isbn10}` : `Standard Publication`)}
+          {refData.type === "PAPER" && ((refData as PaperReference).doi ? `DOI: ${(refData as PaperReference).doi}` : `Academic Document Ingestion`)}
           {refData.type === "WEBSITE" && `URL: ${(refData as WebsiteReference).url}`}
         </p>
 

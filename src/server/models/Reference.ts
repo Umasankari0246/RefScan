@@ -35,27 +35,38 @@ function cleanDoc<T>(doc: any): T {
       keywords: Array.isArray(rest.keywords) ? rest.keywords : [],
       technologies: Array.isArray(rest.technologies) && rest.technologies.length > 0
         ? rest.technologies
-        : Array.isArray(rest.toolsAndTechList) ? rest.toolsAndTechList : [],
+        : Array.isArray(rest.toolsAndTechList)
+          ? rest.toolsAndTechList.map((t: any) => (typeof t === "string" ? t : t.name))
+          : [],
       algorithms: Array.isArray(rest.algorithms) && rest.algorithms.length > 0
         ? rest.algorithms
-        : Array.isArray(rest.algorithmsList) ? rest.algorithmsList : [],
+        : Array.isArray(rest.algorithmsList)
+          ? rest.algorithmsList.map((a: any) => (typeof a === "string" ? a : a.name))
+          : [],
       datasets: Array.isArray(rest.datasets) && rest.datasets.length > 0
         ? rest.datasets
         : Array.isArray(rest.datasetsUsedList) ? rest.datasetsUsedList : [],
       keyFindings: Array.isArray(rest.keyFindings) && rest.keyFindings.length > 0
         ? rest.keyFindings
-        : Array.isArray(rest.resultsAndFindingsList) ? rest.resultsAndFindingsList : [],
+        : Array.isArray(rest.resultsAndFindingsList)
+          ? rest.resultsAndFindingsList.map((r: any) => (typeof r === "string" ? r : r.text))
+          : [],
       limitations: Array.isArray(rest.limitations) && rest.limitations.length > 0
         ? rest.limitations
-        : Array.isArray(rest.limitationsList) ? rest.limitationsList : [],
+        : Array.isArray(rest.limitationsList)
+          ? rest.limitationsList.map((l: any) => (typeof l === "string" ? l : l.text))
+          : [],
       futureScope: Array.isArray(rest.futureScope) && rest.futureScope.length > 0
         ? rest.futureScope
-        : Array.isArray(rest.futureScopeList) ? rest.futureScopeList : [],
+        : Array.isArray(rest.futureScopeList)
+          ? rest.futureScopeList.map((f: any) => (typeof f === "string" ? f : f.text))
+          : [],
       researchGaps: normalizedGaps,
       researchGapsList: normalizedGaps,
       researchProblem: rest.researchProblem || rest.problemStatement || "",
       researchObjective: rest.researchObjective || rest.objectivesList?.[0] || "",
       methodology: rest.methodology || rest.proposedMethod || "",
+      proposedMethod: rest.proposedMethod || rest.methodology || "",
       existingMethod: rest.existingMethod || rest.existingApproach || "",
       references: Array.isArray(rest.references) ? rest.references : Array.isArray(rest.extractedReferences) ? rest.extractedReferences : [],
       sections: Array.isArray(rest.sections) ? rest.sections : [],

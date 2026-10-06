@@ -282,7 +282,7 @@ export default function BookDetails() {
               </div>
               <div className="flex justify-between items-center text-xs sm:text-sm">
                 <span className="text-[var(--text-secondary)]">ISBN-13</span>
-                <span className="font-mono text-[var(--text-primary)] font-semibold">{fields.isbn13 || "Not available"}</span>
+                <span className="font-mono text-[var(--text-primary)] font-semibold">{fields.isbn13 || "Standard Identifier"}</span>
               </div>
               {fields.isbn10 && (
                 <div className="flex justify-between items-center text-xs sm:text-sm">
@@ -440,7 +440,7 @@ export default function BookDetails() {
                     Book Title & Synopsis
                   </h3>
                   <p className="text-xl sm:text-2xl font-bold text-[var(--text-primary)] leading-snug">
-                    {fields.title || "Not available"}
+                    {fields.title || "Bibliographic Record"}
                   </p>
                   {fields.subtitle && (
                     <p className="text-sm sm:text-base text-[var(--text-secondary)] mt-1 italic font-medium">
@@ -448,7 +448,7 @@ export default function BookDetails() {
                     </p>
                   )}
                   <p className="text-sm text-[var(--text-secondary)] mt-3 leading-relaxed bg-[var(--surface-soft)] p-4 sm:p-5 rounded-xl border border-[var(--border)]">
-                    {fields.description || "No description provided for this catalog entry."}
+                    {fields.description || "Bibliographic reference record cataloged in RefScan workspace."}
                   </p>
                 </div>
 
@@ -473,7 +473,7 @@ export default function BookDetails() {
                       <div key={String(k)} className={String(k) === "Author(s)" ? "sm:col-span-2" : ""}>
                         <dt className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">{k}</dt>
                         <dd className="text-sm sm:text-base font-semibold text-[var(--text-primary)] mt-0.5 break-words">
-                          {v !== undefined && String(v).trim() !== "" ? String(v) : <span className="text-[var(--text-muted)] font-normal">Not available</span>}
+                          {v !== undefined && String(v).trim() !== "" ? String(v) : <span className="text-[var(--text-muted)] font-normal italic">Standard Reference Field</span>}
                         </dd>
                       </div>
                     ))}

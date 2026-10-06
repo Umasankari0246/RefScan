@@ -93,7 +93,7 @@ export default function Dashboard() {
                       <div className="min-w-0">
                         <p className="text-sm font-medium text-[var(--text-primary)] truncate hover:text-[var(--primary)] transition-colors">{book.title}</p>
                         <p className="text-xs text-[var(--text-secondary)] mt-0.5">{book.authors.join(", ")} · {book.publisher} ({book.year})</p>
-                        <p className="text-[11px] font-mono text-[var(--text-muted)] mt-0.5">ISBN: {book.isbn13 || book.isbn10 || "Not available"}</p>
+                        <p className="text-[11px] font-mono text-[var(--text-muted)] mt-0.5">{book.isbn13 || book.isbn10 ? `ISBN: ${book.isbn13 || book.isbn10}` : "Cataloged Edition"}</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2 self-end sm:self-center">

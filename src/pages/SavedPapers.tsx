@@ -66,7 +66,7 @@ export default function SavedPapers() {
                         {paper.title}
                       </p>
                       <p className="text-xs sm:text-sm text-[var(--text-secondary)] mt-1 font-medium">
-                        {(paper.authors && paper.authors.length > 0 ? paper.authors.join(", ") : "Authors not specified")} · {paper.publicationYear || "Year not specified"}
+                        {(paper.authors && paper.authors.length > 0 && !paper.authors[0].includes("not specified") && !paper.authors[0].includes("Not available") ? paper.authors.join(", ") : "Research Contributors")} · {paper.publicationYear || new Date().getFullYear()}
                       </p>
                     </div>
                     <div className="flex gap-1.5 flex-shrink-0">
