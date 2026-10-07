@@ -74,7 +74,7 @@ export default function Landing() {
   }, [isAuthenticated, isAuthChecking, navigate]);
 
   return (
-    <div className="min-h-screen relative text-[var(--text-primary)] selection:bg-indigo-500 selection:text-white overflow-x-hidden">
+    <div className="min-h-screen relative text-[var(--text-primary)] selection:bg-indigo-500 selection:text-white">
       {/* ── Dynamic Page-Adaptive Academic Library Background ───────────────── */}
       <PageThemeBackground />
 

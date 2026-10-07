@@ -1,5 +1,6 @@
 import { jsPDF } from "jspdf";
 import html2canvas from "html2canvas";
+import { saveBlobFile } from "./citationService";
 
 export interface ExportPdfOptions {
   filename?: string;
@@ -67,7 +68,9 @@ export async function exportElementAsPdf(
       heightLeft -= pageHeight;
     }
 
-    pdf.save(filename.endsWith(".pdf") ? filename : `${filename}.pdf`);
+    const finalFilename = filename.endsWith(".pdf") ? filename : `${filename}.pdf`;
+    const pdfBlob = pdf.output("blob");
+    await saveBlobFile(pdfBlob, finalFilename, "application/pdf");
   } finally {
     element.style.boxShadow = originalBoxShadow;
     element.style.transform = originalTransform;

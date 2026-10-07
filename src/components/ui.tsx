@@ -467,28 +467,71 @@ export function BookCover({ title, color, size = "md" }: { title: string; color:
 }
 
 // ── FileDropzone ───────────────────────────────────────────────────────────
-export function FileDropzone({ onFile, accept = ".pdf", label = "Drag & drop research paper here" }: { onFile: (f: File) => void; accept?: string; label?: string }) {
+export function FileDropzone({ 
+  onFile, 
+  accept = "application/pdf,application/x-pdf,text/plain,.pdf", 
+  label = "Drag & drop research paper here" 
+}: { 
+  onFile: (f: File) => void; 
+  accept?: string; 
+  label?: string;
+}) {
   const [drag, setDrag] = useState(false);
-  const ref = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (f) {
+      onFile(f);
+    }
+    // Reset value so user can re-upload or select the same file again if desired
+    e.target.value = "";
+  };
+
   return (
-    <div
-      className={`border border-dashed rounded-2xl p-6 sm:p-10 text-center cursor-pointer transition-colors ${
+    <label
+      className={`block border border-dashed rounded-2xl p-6 sm:p-10 text-center cursor-pointer transition-all select-none relative ${
         drag 
-          ? "border-[var(--primary)] bg-[var(--primary-soft)]" 
+          ? "border-[var(--primary)] bg-[var(--primary-soft)] ring-2 ring-[var(--primary)]/20" 
           : "border-[var(--border)] hover:border-[var(--border-hover)] bg-[var(--surface-soft)] hover:bg-[var(--surface-hover)]"
       }`}
       onDragOver={(e) => { e.preventDefault(); setDrag(true); }}
       onDragLeave={() => setDrag(false)}
-      onDrop={(e) => { e.preventDefault(); setDrag(false); const f = e.dataTransfer.files[0]; if (f) onFile(f); }}
-      onClick={() => ref.current?.click()}
+      onDrop={(e) => { 
+        e.preventDefault(); 
+        setDrag(false); 
+        const f = e.dataTransfer.files[0]; 
+        if (f) onFile(f); 
+      }}
     >
-      <input ref={ref} type="file" accept={accept} className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f); }} />
-      <div className="w-11 h-11 bg-[var(--surface)] border border-[var(--border)] rounded-xl flex items-center justify-center mx-auto mb-2.5 text-[var(--primary)] shadow-2xs">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      <input 
+        ref={inputRef}
+        type="file" 
+        accept={accept} 
+        className="sr-only" 
+        onChange={handleChange} 
+      />
+      <div className="w-12 h-12 bg-[var(--surface)] border border-[var(--border)] rounded-2xl flex items-center justify-center mx-auto mb-3 text-[var(--primary)] shadow-xs">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+          <line x1="12" y1="18" x2="12" y2="12" />
+          <line x1="9" y1="15" x2="15" y2="15" />
+        </svg>
       </div>
-      <p className="text-sm font-semibold text-[var(--text-primary)]">{label}</p>
-      <p className="text-xs text-[var(--text-muted)] mt-0.5">or tap to select from device storage — PDF up to 50MB</p>
-    </div>
+      <p className="text-sm sm:text-base font-bold text-[var(--text-primary)]">{label}</p>
+      <p className="text-xs text-[var(--text-secondary)] mt-1 max-w-sm mx-auto">
+        Tap anywhere to browse device files, documents, or PDF storage
+      </p>
+      <div className="mt-3.5 inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-[var(--primary)] text-white text-xs font-semibold shadow-xs hover:bg-[var(--primary-hover)] transition-all pointer-events-none">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+          <polyline points="17 8 12 3 7 8" />
+          <line x1="12" y1="3" x2="12" y2="15" />
+        </svg>
+        Select Paper PDF
+      </div>
+    </label>
   );
 }
 

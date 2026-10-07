@@ -3,6 +3,7 @@ import { useNavigate, useLocation, useSearchParams, Link } from "react-router";
 import { Eye, EyeOff, ArrowRight, Loader2, CheckCircle2 } from "lucide-react";
 import { useRefScan } from "../context/RefScanContext";
 import { RefScanLogo } from "../components/common/RefScanLogo";
+import { PageThemeBackground } from "../components/common/PageThemeBackground";
 
 export default function Login() {
   const navigate = useNavigate();
@@ -64,8 +65,11 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-[var(--bg-primary)] flex items-center justify-center p-4 sm:p-6 text-[var(--text-primary)]">
-      <div className="w-full max-w-md space-y-5 my-8">
+    <div className="min-h-screen relative flex items-center justify-center p-4 sm:p-6 text-[var(--text-primary)]">
+      {/* ── Page Theme Background ─────────────────────────────────────────── */}
+      <PageThemeBackground />
+
+      <div className="w-full max-w-md space-y-5 my-8 relative z-10">
         {/* Brand Logo Header */}
         <div 
           onClick={() => navigate("/")}
@@ -73,10 +77,10 @@ export default function Login() {
           title="Return to RefScan Home"
         >
           <RefScanLogo size={36} rounded="xl" showGlow className="group-hover:scale-105 transition-transform" />
-          <span className="text-2xl font-extrabold text-[#172554] tracking-tight">RefScan</span>
+          <span className="text-2xl font-extrabold text-white tracking-tight drop-shadow-md">RefScan</span>
         </div>
 
-        <div className="bg-white border border-[var(--border)] rounded-2xl p-6 sm:p-8 shadow-sm">
+        <div className="bg-white/95 backdrop-blur-xl border border-white/60 rounded-2xl p-6 sm:p-8 shadow-2xl">
           <h2 className="text-xl font-bold text-[#172554] mb-1 tracking-tight">Welcome Back</h2>
           <p className="text-xs text-[#64748B] mb-5">Sign in to your isolated research workspace.</p>
 

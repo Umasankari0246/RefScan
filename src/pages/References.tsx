@@ -216,13 +216,16 @@ export default function References() {
         </div>
 
         <div className="flex flex-wrap gap-2.5 items-center">
-          {/* Hidden file input for import */}
+          {/* File input for import */}
           <input
             type="file"
             ref={fileInputRef}
-            onChange={handleImportJsonFile}
-            accept=".json"
-            className="hidden"
+            onChange={(e) => {
+              handleImportJsonFile(e);
+              e.target.value = "";
+            }}
+            accept="application/json,text/plain,.json"
+            className="sr-only"
           />
 
           <Button 

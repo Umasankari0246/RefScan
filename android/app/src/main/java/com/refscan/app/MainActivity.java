@@ -23,9 +23,9 @@ public class MainActivity extends BridgeActivity {
             ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.CAMERA}, CAMERA_PERMISSION_REQUEST_CODE);
         }
 
-        // Configure WebChromeClient to handle WebRTC camera permission requests from WebView
+        // Configure WebChromeClient to handle both native file picking and WebRTC camera permission requests
         if (this.bridge != null && this.bridge.getWebView() != null) {
-            this.bridge.getWebView().setWebChromeClient(new WebChromeClient() {
+            this.bridge.getWebView().setWebChromeClient(new com.getcapacitor.BridgeWebChromeClient(this.bridge) {
                 @Override
                 public void onPermissionRequest(final PermissionRequest request) {
                     runOnUiThread(() -> {
@@ -49,6 +49,17 @@ public class MainActivity extends BridgeActivity {
                             request.grant(resources);
                         }
                     });
+                }
+            });
+
+            // Handle downloads from WebView
+            this.bridge.getWebView().setDownloadListener((url, userAgent, contentDisposition, mimetype, contentLength) -> {
+                try {
+                    android.content.Intent i = new android.content.Intent(android.content.Intent.ACTION_VIEW);
+                    i.setData(android.net.Uri.parse(url));
+                    startActivity(i);
+                } catch (Exception e) {
+                    // Ignore or fallback
                 }
             });
         }

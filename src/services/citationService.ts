@@ -382,17 +382,54 @@ export function generateBatchBibliography(refs: Reference[], style: CitationStyl
 }
 
 /**
- * Trigger file download in browser
+ * Cross-platform blob save helper.
+ * Uses Web Share API on mobile devices where direct download of blobs can be blocked,
+ * or standard HTML5 anchor download on desktop.
+ */
+export async function saveBlobFile(blob: Blob, fileName: string, mimeType: string = "application/octet-stream"): Promise<void> {
+  // 1. Try Web Share API (native save sheet on Android WebView & iOS Safari)
+  if (typeof navigator !== "undefined" && typeof navigator.share === "function" && typeof File !== "undefined") {
+    try {
+      const file = new File([blob], fileName, { type: mimeType });
+      if (typeof navigator.canShare === "function" ? navigator.canShare({ files: [file] }) : true) {
+        await navigator.share({
+          files: [file],
+          title: fileName,
+          text: `RefScan export: ${fileName}`,
+        });
+        return;
+      }
+    } catch (err: any) {
+      if (err.name === "AbortError") {
+        return; // User dismissed share sheet
+      }
+      console.warn("[saveBlobFile] Web Share API failed, falling back to anchor download:", err);
+    }
+  }
+
+  // 2. Standard Blob URL download
+  try {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = fileName;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    // Keep URL alive for 60 seconds so mobile WebViews can finish writing the file
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (err) {
+    console.error("[saveBlobFile] Blob download failed:", err);
+  }
+}
+
+/**
+ * Trigger file download in browser or mobile app
  */
 export function downloadCitationFile(content: string, fileName: string, mimeType: string = "text/plain"): void {
   const blob = new Blob([content], { type: `${mimeType};charset=utf-8;` });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.setAttribute("href", url);
-  link.setAttribute("download", fileName);
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
+  saveBlobFile(blob, fileName, mimeType);
 }
 

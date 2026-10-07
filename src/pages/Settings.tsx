@@ -560,7 +560,16 @@ export default function Settings() {
             <p className="text-xs sm:text-sm font-semibold text-[var(--text-primary)]">Import References</p>
             <p className="text-xs text-[var(--text-muted)]">Import previously exported JSON references into your account</p>
           </div>
-          <input ref={fileInputRef} type="file" accept=".json" onChange={handleImportJsonFile} className="hidden" />
+          <input 
+            ref={fileInputRef} 
+            type="file" 
+            accept="application/json,text/plain,.json" 
+            onChange={(e) => {
+              handleImportJsonFile(e);
+              e.target.value = "";
+            }} 
+            className="sr-only" 
+          />
           <Button onClick={() => fileInputRef.current?.click()} variant="outline" size="sm" className="text-xs font-semibold">
             <Upload size={14} className="mr-1.5" /> Import JSON
           </Button>

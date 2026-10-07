@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
-import { CheckCircle2, FileText, Loader2, AlertCircle } from "lucide-react";
-import { Card, Button } from "../components/ui";
+import { CheckCircle2, FileText, Loader2, AlertCircle, Upload } from "lucide-react";
+import { Card, Button, FileDropzone } from "../components/ui";
 import { useRefScan } from "../context/RefScanContext";
 
 const STAGES = [
@@ -16,13 +16,16 @@ const STAGES = [
 
 export default function PaperUpload() {
   const navigate = useNavigate();
-  const { activePaper, addReference } = useRefScan();
+  const { activePaper, addReference, uploadAndProcessPaper } = useRefScan();
   
   const [stage, setStage] = useState(0);
   const [done, setDone] = useState(false);
   const [hasSaved, setHasSaved] = useState(false);
+  const [isProcessingFile, setIsProcessingFile] = useState(false);
 
   useEffect(() => {
+    if (!activePaper) return;
+
     if (stage < STAGES.length) {
       const t = setTimeout(() => setStage((s) => s + 1), 900);
       return () => clearTimeout(t);
@@ -39,15 +42,44 @@ export default function PaperUpload() {
     }
   }, [stage, activePaper, hasSaved, addReference]);
 
+  const handleSelectFile = (file: File) => {
+    setIsProcessingFile(true);
+    uploadAndProcessPaper(file).finally(() => {
+      setIsProcessingFile(false);
+    });
+  };
+
   const pct = Math.round((stage / STAGES.length) * 100);
 
   if (!activePaper) {
     return (
-      <div className="max-w-xl mx-auto text-center py-12 space-y-4 text-[var(--text-primary)]">
-        <AlertCircle className="mx-auto text-rose-500 dark:text-rose-400" size={40} />
-        <h2 className="text-xl font-bold text-[var(--text-primary)]">No Active Processing Session</h2>
-        <p className="text-sm text-[var(--text-secondary)]">Please go back and drop a PDF file to analyze.</p>
-        <Button onClick={() => navigate("/papers")} variant="primary" size="md">Go to Papers</Button>
+      <div className="max-w-2xl mx-auto space-y-6 text-[var(--text-primary)]">
+        <div className="pb-4 border-b border-[var(--border)]">
+          <h2 className="text-2xl sm:text-3xl font-bold text-[var(--text-primary)] tracking-tight">Upload & Analyze Paper</h2>
+          <p className="text-sm sm:text-base text-[var(--text-secondary)] mt-1 font-normal">
+            Upload your academic research paper PDF to run deep methodology extraction, dataset analysis, and scientific gap discovery.
+          </p>
+        </div>
+
+        <Card className="p-6 sm:p-8 space-y-6">
+          {isProcessingFile ? (
+            <div className="py-12 text-center space-y-3">
+              <Loader2 className="mx-auto text-[var(--primary)] animate-spin" size={36} />
+              <p className="text-sm font-semibold text-[var(--text-primary)]">Parsing PDF document structure…</p>
+              <p className="text-xs text-[var(--text-muted)]">Extracting multi-page text and bibliographic headers</p>
+            </div>
+          ) : (
+            <>
+              <FileDropzone onFile={handleSelectFile} label="Drag & drop research paper PDF here or tap to browse" />
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 text-xs text-[var(--text-muted)] border-t border-[var(--border)]">
+                <span>Supports PDF documents up to 50MB</span>
+                <Button onClick={() => navigate("/papers")} variant="outline" size="sm">
+                  View Cataloged Papers
+                </Button>
+              </div>
+            </>
+          )}
+        </Card>
       </div>
     );
   }

@@ -11,7 +11,7 @@ export function PageThemeBackground() {
     >
       {/* ── Base Layer: Deep, Dim, Elegant Midnight Navy Canvas ─────────────── */}
       <div 
-        className="absolute inset-0"
+        className="absolute inset-0 pointer-events-none"
         style={{
           background: "linear-gradient(135deg, #090D1A 0%, #0F172A 40%, #161D36 75%, #0B1120 100%)",
         }}
@@ -20,7 +20,7 @@ export function PageThemeBackground() {
       {/* ── Layer 1: Very Light, Softly Blurred Library Bookshelf Image ──────── */}
       {/* Faint opacity (0.12) ensures it adds rich academic ambiance without competing with fonts */}
       <div 
-        className="absolute inset-0 bg-cover bg-center transition-opacity duration-700"
+        className="absolute inset-0 bg-cover bg-center transition-opacity duration-700 pointer-events-none"
         style={{ 
           backgroundImage: "url('/library-backdrop.jpg')",
           opacity: 0.12,
@@ -30,7 +30,7 @@ export function PageThemeBackground() {
 
       {/* ── Layer 2: Deep Midnight Dimming Overlay ───────────────────────────── */}
       <div 
-        className="absolute inset-0"
+        className="absolute inset-0 pointer-events-none"
         style={{
           background: "linear-gradient(180deg, rgba(9, 13, 26, 0.85) 0%, rgba(15, 23, 42, 0.65) 45%, rgba(9, 13, 26, 0.92) 100%)",
         }}
