@@ -1,14 +1,15 @@
 import { useNavigate } from "react-router";
-import { Microscope, ArrowLeft, Home } from "lucide-react";
+import { ArrowLeft, Home } from "lucide-react";
 import { Button } from "../components/ui";
+import { RefScanLogo } from "../components/common/RefScanLogo";
 
 export default function NotFound() {
   const navigate = useNavigate();
   return (
     <div className="min-h-screen bg-[var(--bg-primary)] flex items-center justify-center p-6 text-[var(--text-primary)]">
-      <div className="text-center max-w-md bg-[var(--surface)] border border-[var(--border)] p-7 sm:p-9 rounded-xl shadow-sm">
-        <div className="w-12 h-12 rounded-lg bg-[var(--surface-soft)] border border-[var(--border)] flex items-center justify-center mx-auto mb-4 text-[var(--text-secondary)] shadow-2xs">
-          <Microscope size={22} />
+      <div className="text-center max-w-md bg-white border border-[var(--border)] p-7 sm:p-9 rounded-2xl shadow-sm">
+        <div className="flex justify-center mb-4">
+          <RefScanLogo size={42} rounded="xl" showGlow />
         </div>
         <h1 className="text-4xl font-extrabold text-[var(--primary)] mb-1 tracking-tight">404</h1>
         <h2 className="text-base sm:text-lg font-bold text-[var(--text-primary)] mb-1">Resource Not Found</h2>

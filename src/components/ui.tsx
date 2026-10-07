@@ -114,8 +114,8 @@ export function Card({
   return (
     <div 
       onClick={onClick} 
-      className={`bg-[var(--surface)] text-[var(--text-primary)] rounded-xl border border-[var(--border)] shadow-2xs transition-all duration-150 ${paddingClass} ${
-        onClick ? "cursor-pointer hover:border-[var(--border-hover)] hover:bg-[var(--surface-hover)]" : ""
+      className={`bg-[var(--surface)] backdrop-blur-md text-[var(--text-primary)] rounded-xl border border-[var(--border)] shadow-xs transition-all duration-150 ${paddingClass} ${
+        onClick ? "cursor-pointer hover:border-[var(--border-hover)] hover:bg-[var(--surface-hover)] hover:shadow-sm" : ""
       } ${className}`}
     >
       {children}
@@ -360,7 +360,7 @@ export function StatCard({
   };
 
   return (
-    <div className={`rounded-[18px] bg-[var(--surface)] border border-[var(--border)] ${accentTopBorder[accent]} p-4 sm:p-5 shadow-xs hover:shadow-md transition-all duration-200 group flex flex-col justify-between h-full ${className}`}>
+    <div className={`rounded-[18px] bg-[var(--surface)] backdrop-blur-md border border-[var(--border)] ${accentTopBorder[accent]} p-4 sm:p-5 shadow-xs hover:shadow-md transition-all duration-200 group flex flex-col justify-between h-full ${className}`}>
       {/* Top row: Label & Icon Container */}
       <div className="flex items-center justify-between gap-2 mb-2">
         <span className="text-xs sm:text-[13px] font-semibold text-[var(--text-secondary)] tracking-normal">

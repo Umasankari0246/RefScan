@@ -1,17 +1,39 @@
-import { useState } from "react";
-import { useNavigate, Link } from "react-router";
-import { Microscope, Eye, EyeOff, ArrowRight, Loader2 } from "lucide-react";
+import { useState, useEffect } from "react";
+import { useNavigate, useLocation, useSearchParams, Link } from "react-router";
+import { Eye, EyeOff, ArrowRight, Loader2, CheckCircle2 } from "lucide-react";
 import { useRefScan } from "../context/RefScanContext";
+import { RefScanLogo } from "../components/common/RefScanLogo";
 
 export default function Login() {
   const navigate = useNavigate();
-  const { login } = useRefScan();
-  const [email, setEmail] = useState("");
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const { login, isAuthenticated, isAuthChecking } = useRefScan();
+
+  const isJustRegistered = location.state?.registered || searchParams.get("registered") === "true";
+  const incomingEmail = location.state?.email || searchParams.get("email") || "";
+
+  const [email, setEmail] = useState(incomingEmail);
   const [password, setPassword] = useState("");
   const [showPwd, setShowPwd] = useState(false);
   const [remember, setRemember] = useState(false);
   const [error, setError] = useState("");
+  const [successMsg, setSuccessMsg] = useState(
+    isJustRegistered ? "Account created successfully! Please enter your password to sign in." : ""
+  );
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!isAuthChecking && isAuthenticated && !isJustRegistered) {
+      navigate("/dashboard", { replace: true });
+    }
+  }, [isAuthenticated, isAuthChecking, isJustRegistered, navigate]);
+
+  useEffect(() => {
+    if (incomingEmail && !email) {
+      setEmail(incomingEmail);
+    }
+  }, [incomingEmail]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -31,6 +53,7 @@ export default function Login() {
     try {
       setLoading(true);
       setError("");
+      setSuccessMsg("");
       await login(email.trim(), password);
       navigate("/dashboard");
     } catch (err: any) {
@@ -41,22 +64,32 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-[var(--bg-primary)] flex items-center justify-center p-6 sm:p-8 text-[var(--text-primary)]">
-      <div className="w-full max-w-md space-y-6">
-        {/* Logo */}
-        <div className="flex items-center justify-center gap-2.5">
-          <div className="w-9 h-9 rounded-lg bg-[var(--primary)] flex items-center justify-center text-white shadow-2xs">
-            <Microscope size={18} />
-          </div>
-          <span className="text-xl font-bold text-[var(--text-primary)] tracking-tight">RefScan</span>
+    <div className="min-h-screen bg-[var(--bg-primary)] flex items-center justify-center p-4 sm:p-6 text-[var(--text-primary)]">
+      <div className="w-full max-w-md space-y-5 my-8">
+        {/* Brand Logo Header */}
+        <div 
+          onClick={() => navigate("/")}
+          className="flex items-center justify-center gap-2.5 cursor-pointer group"
+          title="Return to RefScan Home"
+        >
+          <RefScanLogo size={36} rounded="xl" showGlow className="group-hover:scale-105 transition-transform" />
+          <span className="text-2xl font-extrabold text-[#172554] tracking-tight">RefScan</span>
         </div>
 
-        <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-6 sm:p-8 shadow-sm">
-          <h2 className="text-xl font-bold text-[var(--text-primary)] mb-1 tracking-tight">Welcome Back</h2>
-          <p className="text-xs text-[var(--text-secondary)] mb-6">Sign in to your isolated research workspace.</p>
+        <div className="bg-white border border-[var(--border)] rounded-2xl p-6 sm:p-8 shadow-sm">
+          <h2 className="text-xl font-bold text-[#172554] mb-1 tracking-tight">Welcome Back</h2>
+          <p className="text-xs text-[#64748B] mb-5">Sign in to your isolated research workspace.</p>
+
+          {/* Success banner when redirected from successful account registration */}
+          {successMsg && (
+            <div className="mb-4 p-3.5 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-800 text-xs font-semibold flex items-center gap-2.5 animate-in fade-in">
+              <CheckCircle2 size={18} className="text-emerald-600 flex-shrink-0" />
+              <span>{successMsg}</span>
+            </div>
+          )}
 
           {error && (
-            <div className="mb-4 p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/50 text-rose-700 dark:text-rose-300 text-xs font-semibold animate-in fade-in">
+            <div className="mb-4 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold animate-in fade-in">
               {error}
             </div>
           )}

@@ -24,7 +24,7 @@ interface RefScanContextType {
   isAuthenticated: boolean;
   isAuthChecking: boolean;
   login: (email: string, password?: string) => Promise<AuthResponse>;
-  register: (data: { name: string; email: string; password: string; title?: string; institution?: string }) => Promise<AuthResponse>;
+  register: (data: { name: string; email: string; password: string; title?: string; institution?: string }, autoLogin?: boolean) => Promise<AuthResponse>;
   logout: () => Promise<void>;
   refreshUserData: () => Promise<void>;
 
@@ -244,7 +244,24 @@ export const RefScanProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     async function initSession() {
       setIsAuthChecking(true);
-      await checkBackendHealth();
+
+      // Hydrate session immediately from persistent storage so app is instantly authenticated
+      const cachedToken = AuthService.getToken();
+      const cachedUser = AuthService.getCachedUser();
+
+      if (cachedToken && cachedUser) {
+        setCurrentUser(cachedUser);
+        setIsAuthenticated(true);
+        // Pre-populate cached references so views load instantly
+        const localRefs = StorageService.getReferences(cachedUser.id);
+        if (localRefs && localRefs.length > 0) {
+          setReferences(localRefs.map(normalizeReference));
+        }
+        const localCitations = StorageService.getCitationPapers(cachedUser.id);
+        if (localCitations && localCitations.length > 0) {
+          setCitationPapers(localCitations);
+        }
+      }
 
       try {
         const verifiedUser = await AuthService.verifySession();
@@ -253,7 +270,8 @@ export const RefScanProvider: React.FC<{ children: React.ReactNode }> = ({ child
             setCurrentUser(verifiedUser);
             setIsAuthenticated(true);
             await loadUserData(verifiedUser);
-          } else {
+          } else if (!cachedToken) {
+            // Only clear state if there was no token stored
             setCurrentUser(null);
             setIsAuthenticated(false);
             setReferences([]);
@@ -263,14 +281,17 @@ export const RefScanProvider: React.FC<{ children: React.ReactNode }> = ({ child
         }
       } catch (err) {
         if (mounted) {
-          console.warn("[RefScanContext] Session verification error:", err);
-          setCurrentUser(null);
-          setIsAuthenticated(false);
+          console.warn("[RefScanContext] Session verification warning:", err);
+          if (!cachedToken) {
+            setCurrentUser(null);
+            setIsAuthenticated(false);
+          }
         }
       } finally {
         if (mounted) {
           setIsAuthChecking(false);
         }
+        checkBackendHealth().catch(() => {});
       }
     }
 
@@ -295,26 +316,35 @@ export const RefScanProvider: React.FC<{ children: React.ReactNode }> = ({ child
   };
 
   /**
-   * Register action: Create MongoDB user, store token, start with fresh isolated workspace
+   * Register action: Create MongoDB user.
+   * If autoLogin is true, store token and start fresh workspace.
+   * By default autoLogin is false, so user is redirected to Login page to authenticate.
    */
-  const register = async (data: {
-    name: string;
-    email: string;
-    password: string;
-    title?: string;
-    institution?: string;
-  }): Promise<AuthResponse> => {
-    const authRes = await AuthService.register(data);
-    setCurrentUser(authRes.user);
-    setIsAuthenticated(true);
+  const register = async (
+    data: {
+      name: string;
+      email: string;
+      password: string;
+      title?: string;
+      institution?: string;
+    },
+    autoLogin: boolean = false
+  ): Promise<AuthResponse> => {
+    const authRes = await AuthService.register(data, autoLogin);
 
-    // Reset workspace for new user
-    setReferences([]);
-    setCitationPapers([]);
-    setNotifications([]);
-    setStagedReferencesState([]);
+    if (autoLogin) {
+      setCurrentUser(authRes.user);
+      setIsAuthenticated(true);
 
-    await loadUserData(authRes.user);
+      // Reset workspace for new user
+      setReferences([]);
+      setCitationPapers([]);
+      setNotifications([]);
+      setStagedReferencesState([]);
+
+      await loadUserData(authRes.user);
+    }
+
     return authRes;
   };
 

@@ -15,6 +15,7 @@ import { CameraControls } from "./CameraControls";
 import { CameraSwitcher } from "./CameraSwitcher";
 import { ScannerStatus, ScannerLifecycleState } from "./ScannerStatus";
 import { BookReference } from "../../types";
+import { isCapacitorNative } from "../../services/apiConfig";
 
 interface ScannerViewProps {
   onBookDetected: (book: BookReference) => void;
@@ -87,11 +88,15 @@ export function ScannerView({ onBookDetected, onManualInput, onEditManually, onC
     } catch (err: any) {
       console.warn("Camera access error:", err);
       setScannerState("camera_error");
-      setErrorMessage(
-        err.name === "NotAllowedError" || err.name === "PermissionDeniedError"
-          ? "Camera permission was denied. Please allow camera permissions in your browser address bar."
-          : err.message || "Failed to access camera device."
-      );
+      const isDenied = err.name === "NotAllowedError" || err.name === "PermissionDeniedError";
+      const isNative = isCapacitorNative();
+      let msg = err.message || "Failed to access camera device.";
+      if (isDenied) {
+        msg = isNative
+          ? "Camera permission was denied. Tap 'Try Again' to grant permission, or use 'Snap Barcode Photo' to scan using your phone camera."
+          : "Camera permission was denied. Please allow camera permissions in your browser or use 'Snap Barcode Photo'.";
+      }
+      setErrorMessage(msg);
     }
   }, [stream]);
 
@@ -241,11 +246,12 @@ export function ScannerView({ onBookDetected, onManualInput, onEditManually, onC
 
   return (
     <div className="relative w-full rounded-2xl overflow-hidden bg-slate-950 min-h-[350px] sm:min-h-[400px] aspect-auto sm:aspect-video shadow-lg border border-[var(--border)] isolate select-none">
-      {/* Hidden File Input for Barcode Photo Upload */}
+      {/* Hidden File Input for Barcode Photo Upload / Mobile Camera Capture */}
       <input
         ref={fileInputRef}
         type="file"
         accept="image/*"
+        capture="environment"
         className="hidden"
         onChange={handleFileUpload}
       />
@@ -284,6 +290,7 @@ export function ScannerView({ onBookDetected, onManualInput, onEditManually, onC
         onManualInput={onManualInput}
         onEditManually={onEditManually}
         onConfirmBook={() => foundBook && onBookDetected(foundBook)}
+        onUploadPhoto={() => fileInputRef.current?.click()}
       />
 
       {/* Top Camera Switcher Dropdown */}

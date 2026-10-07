@@ -28,6 +28,7 @@ interface ScannerStatusProps {
   onManualInput: () => void;
   onEditManually?: () => void;
   onConfirmBook: () => void;
+  onUploadPhoto?: () => void;
 }
 
 export function ScannerStatus({
@@ -39,7 +40,8 @@ export function ScannerStatus({
   onRetry,
   onManualInput,
   onEditManually,
-  onConfirmBook
+  onConfirmBook,
+  onUploadPhoto
 }: ScannerStatusProps) {
   // State 1 — Camera Permission Required
   if (state === "permission_required") {
@@ -55,12 +57,17 @@ export function ScannerStatus({
         <p className="text-xs sm:text-sm text-[var(--text-secondary)] max-w-xs sm:max-w-md leading-relaxed">
           Allow camera access to scan physical book barcodes and retrieve verified academic metadata automatically.
         </p>
-        <div className="flex flex-row gap-2 sm:gap-3 pt-1 w-full max-w-xs sm:max-w-sm">
+        <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 pt-1 w-full max-w-xs sm:max-w-md">
           <Button onClick={onRequestPermission} variant="primary" size="md" className="flex-1 min-h-[40px] sm:min-h-[44px] text-xs sm:text-sm font-semibold">
-            Allow Camera
+            <Camera size={14} className="mr-1.5" /> Start Live Camera
           </Button>
+          {onUploadPhoto && (
+            <Button onClick={onUploadPhoto} variant="secondary" size="md" className="flex-1 min-h-[40px] sm:min-h-[44px] text-xs sm:text-sm font-semibold">
+              <Sparkles size={14} className="mr-1.5" /> Snap Barcode Photo
+            </Button>
+          )}
           <Button onClick={onManualInput} variant="outline" size="md" className="flex-1 min-h-[40px] sm:min-h-[44px] text-xs sm:text-sm font-semibold">
-            Enter ISBN
+            <Keyboard size={14} className="mr-1.5" /> Enter ISBN
           </Button>
         </div>
       </div>
@@ -81,12 +88,17 @@ export function ScannerStatus({
         <p className="text-xs sm:text-sm text-rose-600 dark:text-rose-400 max-w-xs sm:max-w-md leading-relaxed">
           {errorMessage || "Unable to access the camera. Check camera permissions and try again."}
         </p>
-        <div className="flex flex-row gap-2 sm:gap-3 pt-1 w-full max-w-xs sm:max-w-sm">
+        <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 pt-1 w-full max-w-xs sm:max-w-md">
           <Button onClick={onRetry} variant="primary" size="md" className="flex-1 min-h-[40px] sm:min-h-[44px] text-xs sm:text-sm font-semibold">
-            <RefreshCw size={14} className="mr-1 sm:mr-1.5" /> Try Again
+            <RefreshCw size={14} className="mr-1.5" /> Try Again
           </Button>
+          {onUploadPhoto && (
+            <Button onClick={onUploadPhoto} variant="secondary" size="md" className="flex-1 min-h-[40px] sm:min-h-[44px] text-xs sm:text-sm font-semibold">
+              <Camera size={14} className="mr-1.5" /> Snap Barcode Photo
+            </Button>
+          )}
           <Button onClick={onManualInput} variant="outline" size="md" className="flex-1 min-h-[40px] sm:min-h-[44px] text-xs sm:text-sm font-semibold">
-            <Keyboard size={14} className="mr-1 sm:mr-1.5" /> Manual ISBN
+            <Keyboard size={14} className="mr-1.5" /> Manual ISBN
           </Button>
         </div>
       </div>

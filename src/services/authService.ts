@@ -44,6 +44,8 @@ export class AuthService {
 
   /**
    * Verify session with backend: GET /api/auth/me
+   * Only clears session if server explicitly returns 401/403.
+   * If server is spinning up (502/503/504) or connection drops, preserves cached user.
    */
   static async verifySession(): Promise<SafeUser | null> {
     const token = this.getToken();
@@ -64,11 +66,16 @@ export class AuthService {
         }
       }
 
-      // If token is invalid or expired (401), clear invalid token
-      if (res.status === 401) {
+      // ONLY invalidate session if token was rejected as unauthorized/forbidden
+      if (res.status === 401 || res.status === 403) {
+        console.warn("[AuthService] Session token expired or unauthorized (401/403). Logging out.");
         this.logout();
+        return null;
       }
-      return null;
+
+      // Server error (502/503/504 Render cold-start, etc.): preserve local cached session!
+      console.warn(`[AuthService] verifySession returned status ${res.status}. Preserving cached session.`);
+      return this.getCachedUser();
     } catch (err) {
       console.warn("[AuthService] Could not reach backend to verify session:", err);
       return this.getCachedUser();
@@ -106,14 +113,18 @@ export class AuthService {
 
   /**
    * Register a new user in MongoDB via POST /api/auth/register
+   * Does NOT auto-persist token unless autoLogin is explicitly set to true.
    */
-  static async register(data: {
-    name: string;
-    email: string;
-    password: string;
-    title?: string;
-    institution?: string;
-  }): Promise<AuthResponse> {
+  static async register(
+    data: {
+      name: string;
+      email: string;
+      password: string;
+      title?: string;
+      institution?: string;
+    },
+    autoLogin: boolean = false
+  ): Promise<AuthResponse> {
     if (!data.name?.trim()) throw new Error("Full name is required.");
     if (!data.email || !data.email.includes("@")) throw new Error("A valid email address is required.");
     if (!data.password || data.password.length < 6) throw new Error("Password must be at least 6 characters.");
@@ -135,9 +146,11 @@ export class AuthService {
       throw new Error(resData.message || resData.error || "Registration failed.");
     }
 
-    // Persist token and safe user
-    this.setToken(resData.token);
-    StorageService.safeSet("refscan_user_session", resData.user);
+    // Only persist token and safe user if autoLogin is explicitly requested
+    if (autoLogin) {
+      this.setToken(resData.token);
+      StorageService.safeSet("refscan_user_session", resData.user);
+    }
 
     return resData as AuthResponse;
   }

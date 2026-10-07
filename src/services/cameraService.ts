@@ -63,42 +63,40 @@ export async function startCameraStream(options?: {
   facingMode?: "environment" | "user";
 }): Promise<MediaStream> {
   if (!isCameraSupported()) {
-    throw new Error("Camera is not supported on this browser or connection is not secure (HTTPS required).");
+    throw new Error("Camera is not supported on this device/browser or HTTPS connection is required.");
   }
 
-  const baseVideoConstraints: MediaTrackConstraints = {
-    width: { ideal: 1920, min: 640 },
-    height: { ideal: 1080, min: 480 },
-    frameRate: { ideal: 30, max: 60 },
-  };
+  const facing = options?.facingMode || "environment";
 
-  if (options?.deviceId) {
-    baseVideoConstraints.deviceId = { exact: options.deviceId };
-  } else {
-    baseVideoConstraints.facingMode = options?.facingMode || { ideal: "environment" };
-  }
-
+  // Attempt 1: Standard mobile camera stream with preferred rear-facing lens
   try {
-    // Try with focusMode continuous if supported by modern mobile browsers
-    return await navigator.mediaDevices.getUserMedia({
+    const constraints: MediaStreamConstraints = {
       audio: false,
-      video: {
-        ...baseVideoConstraints,
-        advanced: [{ focusMode: "continuous" } as any]
-      }
-    });
-  } catch (err) {
-    // Fallback to standard video constraints
+      video: options?.deviceId
+        ? { deviceId: { exact: options.deviceId } }
+        : {
+            facingMode: { ideal: facing },
+            width: { ideal: 1280, min: 640 },
+            height: { ideal: 720, min: 480 },
+          },
+    };
+    return await navigator.mediaDevices.getUserMedia(constraints);
+  } catch (err: any) {
+    console.warn("[CameraService] Preferred constraints failed, attempting facing fallback:", err?.message || err);
+
+    // Attempt 2: Simplified constraints with just facingMode string
     try {
       return await navigator.mediaDevices.getUserMedia({
         audio: false,
-        video: baseVideoConstraints
+        video: { facingMode: facing },
       });
-    } catch (fallbackErr) {
-      // Minimal fallback constraints
+    } catch (err2: any) {
+      console.warn("[CameraService] FacingMode constraints failed, attempting generic video fallback:", err2?.message || err2);
+
+      // Attempt 3: Any available video device
       return await navigator.mediaDevices.getUserMedia({
         audio: false,
-        video: options?.facingMode ? { facingMode: options.facingMode } : true
+        video: true,
       });
     }
   }

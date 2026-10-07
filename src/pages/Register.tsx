@@ -1,16 +1,23 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router";
-import { Microscope, Eye, EyeOff, ArrowRight, Loader2 } from "lucide-react";
+import { Eye, EyeOff, ArrowRight, Loader2 } from "lucide-react";
 import { useRefScan } from "../context/RefScanContext";
+import { RefScanLogo } from "../components/common/RefScanLogo";
 
 export default function Register() {
   const navigate = useNavigate();
-  const { register } = useRefScan();
+  const { register, isAuthenticated, isAuthChecking } = useRefScan();
   const [form, setForm] = useState({ name: "", email: "", password: "", confirm: "", institution: "" });
   const [showPwd, setShowPwd] = useState(false);
   const [agreed, setAgreed] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!isAuthChecking && isAuthenticated) {
+      navigate("/dashboard", { replace: true });
+    }
+  }, [isAuthenticated, isAuthChecking, navigate]);
 
   const f = (k: string) => (v: string) => {
     setForm({ ...form, [k]: v });
@@ -43,14 +50,22 @@ export default function Register() {
     try {
       setLoading(true);
       setError("");
-      await register({
-        name: form.name.trim(),
-        email: form.email.trim(),
-        password: form.password,
-        title: "Academic Researcher",
-        institution: form.institution.trim() || "Academic Research Institution",
+      // Register new user without auto-logging in
+      await register(
+        {
+          name: form.name.trim(),
+          email: form.email.trim(),
+          password: form.password,
+          title: "Academic Researcher",
+          institution: form.institution.trim() || "Academic Research Institution",
+        },
+        false
+      );
+
+      // Redirect to login page with registered flag and pre-filled email
+      navigate(`/login?registered=true&email=${encodeURIComponent(form.email.trim())}`, {
+        state: { registered: true, email: form.email.trim() },
       });
-      navigate("/dashboard");
     } catch (err: any) {
       setError(err.message || "Registration failed. Please try again.");
     } finally {
@@ -59,18 +74,20 @@ export default function Register() {
   };
 
   return (
-    <div className="min-h-screen bg-[var(--bg-primary)] flex items-center justify-center p-6 sm:p-8 text-[var(--text-primary)]">
-      <div className="w-full max-w-md space-y-6">
-        <div className="flex items-center justify-center gap-2.5">
-          <div className="w-9 h-9 rounded-lg bg-[var(--primary)] flex items-center justify-center text-white shadow-2xs">
-            <Microscope size={18} />
-          </div>
-          <span className="text-xl font-bold text-[var(--text-primary)] tracking-tight">RefScan</span>
+    <div className="min-h-screen bg-[var(--bg-primary)] flex items-center justify-center p-4 sm:p-6 text-[var(--text-primary)]">
+      <div className="w-full max-w-md space-y-5 my-8">
+        <div 
+          onClick={() => navigate("/")}
+          className="flex items-center justify-center gap-2.5 cursor-pointer group"
+          title="Return to RefScan Home"
+        >
+          <RefScanLogo size={36} rounded="xl" showGlow className="group-hover:scale-105 transition-transform" />
+          <span className="text-2xl font-extrabold text-[#172554] tracking-tight">RefScan</span>
         </div>
 
-        <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-6 sm:p-8 shadow-sm">
-          <h2 className="text-xl font-bold text-[var(--text-primary)] mb-1 tracking-tight">Create Your Account</h2>
-          <p className="text-xs text-[var(--text-secondary)] mb-6">Start organizing references and analyzing literature.</p>
+        <div className="bg-white border border-[var(--border)] rounded-2xl p-6 sm:p-8 shadow-sm">
+          <h2 className="text-xl font-bold text-[#172554] mb-1 tracking-tight">Create Your Account</h2>
+          <p className="text-xs text-[#64748B] mb-5">Start organizing references and analyzing literature.</p>
 
           {error && (
             <div className="mb-4 p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/50 text-rose-700 dark:text-rose-300 text-xs font-semibold animate-in fade-in">
